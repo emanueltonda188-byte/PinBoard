@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Create pin - PinBoard</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <h1>Create pin</h1>
+  <p>Photo first, then details, then Publish.</p>
+
+  <img id="pending-preview" alt="Your photo">
+
+  <form id="pin-form">
+    <input id="title" placeholder="Pin title" required>
+    <textarea id="description" placeholder="Description (optional)"></textarea>
+    <select id="category">
+      <option>Room</option>
+      <option>Car</option>
+      <option>Movie</option>
+      <option>Item</option>
+      <option>Other</option>
+    </select>
+    <select id="board">
+      <option value="">No board</option>
+    </select>
+    <input id="image" placeholder="Image link (if you did not pick a photo)">
+    <input type="file" id="photo" accept="image/*">
+    <input id="link" placeholder="Buy / Watch link (optional)">
+    <button>Publish</button>
+  </form>
+
+  <p><a href="index.html">← Back to feed</a></p>
+
+  <script src="create.js"></script>
+</body>
+</html>

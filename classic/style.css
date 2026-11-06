@@ -1,0 +1,18 @@
+body {
+    font-family:  Arial, sans-serif;
+    backgroung:#faf6f0;
+    text-align: center;
+}
+
+div {
+    background: white;
+    width: 320px;
+    margin: 20px auto;
+    padding: 10px;
+    border-radius: 12px;
+}
+
+img{
+    width: 300px;
+    border-radius: 12px;
+}

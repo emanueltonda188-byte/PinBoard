@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>PINBOARD</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <h1>Pinboard</h1>
+    <p>Save ideas.</p>
+    <form id="pin-form">
+        <input id="title" placeholder="Pin title">
+        <select id="category">
+            <option>Room</option>
+            <option>car</option>
+            <option>Movies</option>
+            <option>Item</option>
+            <option>Other</option>
+        </select>
+        <input id="image" placeholder="Image link">
+        <input type="file" id="photo"accept="image/*">
+        <button>Add pin</button>
+    </form>
+    <input id="search"placeholder="search pins...">
+    <button id ="search-button">Search</button>
+    <div id="filters">
+        <button data-category="All">All</button>
+        <button data-category="Room">Room</button>
+        <button data-category="Car">Car</button>
+        <button data-category="Movies">Movies</button>
+        <button data-category="Item">Item</button>
+        <button data-category="Other">Other</button>
+    </div>
+    <main id="grid"></main>
+        <script src="app.js"></script>
+</body>
+</html>
