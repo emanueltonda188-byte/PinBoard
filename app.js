@@ -572,7 +572,7 @@ $("signup-btn").addEventListener("click", async function() {
   var err = $("auth-error"); err.classList.add("hidden");
   if (!name) { err.textContent = "Add your name."; err.classList.remove("hidden"); return; }
   if (!email) { err.textContent = "Add your email."; err.classList.remove("hidden"); return; }
-  if (pw.length < 4) { err.textContent = "Password needs at least 4 characters."; err.classList.remove("hidden"); return; }
+  if (pw.length < 6) { err.textContent = "Password needs at least 6 characters."; err.classList.remove("hidden"); return; }
   var res = await sb.auth.signUp({ email: email, password: pw, options: { data: { display_name: name } } });
   if (res.error) { err.textContent = res.error.message; err.classList.remove("hidden"); return; }
   currentUser = res.data.user;
