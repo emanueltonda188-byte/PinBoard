@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PinBoard</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <!-- Hidden real device picker: on Android mobile browsers this opens the system gallery/file picker -->
+  <input type="file" id="media-input" accept="image/*,video/*" multiple hidden />
+
+  <!-- ============ FEED VIEW (preserved) ============ -->
+  <div id="feed-view" class="view active">
+    <header>
+      <h1>📌 PinBoard</h1>
+      <p>Save ideas.</p>
+    </header>
+
+    <div class="search-row">
+      <input id="search" placeholder="Search pins" />
+      <button id="search-button" type="button">Search</button>
+    </div>
+
+    <div id="filters">
+      <button type="button" data-category="All">All</button>
+      <button type="button" data-category="Room">Room</button>
+      <button type="button" data-category="Car">Car</button>
+      <button type="button" data-category="Movie">Movie</button>
+      <button type="button" data-category="Item">Item</button>
+      <button type="button" data-category="Other">Other</button>
+    </div>
+
+    <h2>Vertical • 9:16</h2>
+    <main id="grid"></main>
+
+    <h2>Landscape • 16:9</h2>
+    <main id="grid-landscape"></main>
+
+    <p id="feed-empty" class="empty hidden">No pins yet. Tap + to create your first pin.</p>
+  </div>
+
+  <!-- Plus button: preserved, top right, big orange circle. Now opens the menu, not create.html -->
+  <button id="plus-button" class="plus-button" type="button" aria-label="Create">+</button>
+
+  <!-- ============ PLUS MENU BOTTOM SHEET ============ -->
+  <div id="sheet-overlay" class="sheet-overlay hidden"></div>
+
+  <div id="plus-sheet" class="sheet hidden" role="dialog" aria-label="Create menu">
+    <div class="sheet-handle"></div>
+    <div class="sheet-head">
+      <h2>Create</h2>
+      <button id="plus-sheet-close" type="button" class="icon-btn" aria-label="Close">✕</button>
+    </div>
+    <button id="menu-create-pin" type="button" class="menu-option">
+      <span class="menu-icon">📌</span>
+      <span class="menu-text"><strong>Create Pin</strong><small>Pick a photo or video from your device and publish it.</small></span>
+      <span class="menu-arrow">›</span>
+    </button>
+    <button id="menu-create-board" type="button" class="menu-option">
+      <span class="menu-icon">🗂️</span>
+      <span class="menu-text"><strong>Create Board</strong><small>Group pins together, public or private.</small></span>
+      <span class="menu-arrow">›</span>
+    </button>
+    <button id="menu-create-collage" type="button" class="menu-option">
+      <span class="menu-icon">🧩</span>
+      <span class="menu-text"><strong>Create Collage</strong><small>Pick 2–4 photos and publish them as one collage pin.</small></span>
+      <span class="menu-arrow">›</span>
+    </button>
+  </div>
+
+  <!-- ============ BOARD SHEET ============ -->
+  <div id="board-sheet" class="sheet hidden" role="dialog" aria-label="Select board">
+    <div class="sheet-handle"></div>
+    <div class="sheet-head">
+      <h2 id="board-sheet-title">Select Board</h2>
+      <button id="board-sheet-close" type="button" class="icon-btn" aria-label="Close">✕</button>
+    </div>
+    <input id="board-search" placeholder="Search boards" />
+    <div id="board-list"></div>
+    <p id="board-empty" class="empty hidden">No boards yet. Create one below.</p>
+    <button id="board-show-create" type="button" class="secondary-btn">+ Create Board</button>
+    <div id="board-create-form" class="hidden">
+      <input id="board-name" placeholder="Board name, e.g. Dream rooms" />
+      <label class="check-row"><input type="checkbox" id="board-private" /> Private board</label>
+      <button id="board-create-save" type="button">Create board</button>
+      <p id="board-create-error" class="error hidden"></p>
+    </div>
+  </div>
+
+  <!-- ============ CREATE VIEW: picker -> editor -> details -> publish ============ -->
+  <div id="create-view" class="view">
+    <div class="top-bar">
+      <button id="create-back" type="button" class="icon-btn" aria-label="Back">←</button>
+      <h2 id="create-step-title">Pick media</h2>
+      <button id="create-close" type="button" class="icon-btn" aria-label="Close">✕</button>
+    </div>
+
+    <!-- Step: Picker -->
+    <section id="step-picker" class="step">
+      <p class="note">Picking opens your device's real gallery / file picker. Albums and Folders live inside that system picker — a web page cannot list your device albums itself, so no fake gallery is shown here.</p>
+      <button id="choose-media-btn" type="button">Choose photos / videos</button>
+      <div class="tabs" role="tablist">
+        <button id="tab-all" type="button" class="tab active">All</button>
+        <button id="tab-photos" type="button" class="tab">Photos</button>
+        <button id="tab-videos" type="button" class="tab">Videos</button>
+      </div>
+      <p id="picker-count" class="muted">0 selected</p>
+      <div id="picker-grid" class="picker-grid"></div>
+      <p id="picker-empty" class="empty">No media picked yet. Tap “Choose photos / videos” above, or tap + again and choose Create Pin.</p>
+      <p id="picker-cancelled" class="error hidden">Picker was cancelled or no file was chosen. Tap “Choose photos / videos” to try again. If the picker never opens, allow file access in your browser settings and try again.</p>
+      <button id="picker-next" type="button" disabled>Next</button>
+    </section>
+
+    <!-- Step: Editor -->
+    <section id="step-editor" class="step hidden">
+      <div id="editor-preview" class="editor-preview"></div>
+      <p id="video-duration" class="muted hidden"></p>
+      <div id="editor-thumbs" class="picker-grid small"></div>
+
+      <div id="editor-image-controls">
+        <h3>Aspect ratio</h3>
+        <div class="chip-row" id="aspect-row">
+          <button type="button" data-aspect="original" class="chip active">Original</button>
+          <button type="button" data-aspect="9 / 16" class="chip">9:16</button>
+          <button type="button" data-aspect="16 / 9" class="chip">16:9</button>
+          <button type="button" data-aspect="1 / 1" class="chip">1:1</button>
+        </div>
+        <button id="rotate-btn" type="button" class="secondary-btn">Rotate 90°</button>
+        <h3>Text overlay</h3>
+        <input id="overlay-text" placeholder="Text on this pin (optional)" />
+        <div class="field-row">
+          <label>Position
+            <select id="overlay-position">
+              <option value="top">Top</option>
+              <option value="center" selected>Center</option>
+              <option value="bottom">Bottom</option>
+            </select>
+          </label>
+          <label>Color <input id="overlay-color" type="color" value="#ffffff" /></label>
+          <label>Size <input id="overlay-size" type="range" min="14" max="48" value="24" /></label>
+        </div>
+        <h3>Filters &amp; adjustments (images only)</h3>
+        <label>Filter
+          <select id="filter-preset">
+            <option value="none" selected>None</option>
+            <option value="grayscale">Grayscale</option>
+            <option value="sepia">Sepia</option>
+            <option value="vivid">Vivid</option>
+          </select>
+        </label>
+        <label>Brightness <input id="brightness" type="range" min="50" max="150" value="100" /></label>
+        <label>Contrast <input id="contrast" type="range" min="50" max="150" value="100" /></label>
+        <label>Saturation <input id="saturation" type="range" min="50" max="150" value="100" /></label>
+      </div>
+
+      <div class="field-row">
+        <button id="editor-delete" type="button" class="danger-btn">Delete this media</button>
+        <button id="editor-add-more" type="button" class="secondary-btn">Add more media</button>
+      </div>
+      <div class="field-row">
+        <button id="editor-back" type="button" class="secondary-btn">Back</button>
+        <button id="editor-next" type="button">Next</button>
+      </div>
+    </section>
+
+    <!-- Step: Details -->
+    <section id="step-details" class="step hidden">
+      <label>Title * <input id="detail-title" placeholder="Add a title, e.g. Cozy bedroom idea" /></label>
+      <label>Description <textarea id="detail-description" placeholder="Tell people about this pin (optional)"></textarea></label>
+      <label>Destination link <input id="detail-link" placeholder="Buy / Watch link (optional), e.g. https://…" /></label>
+
+      <label>Board *</label>
+      <button id="detail-board-btn" type="button" class="secondary-btn">Select Board</button>
+      <p id="detail-board-name" class="muted">No board selected yet.</p>
+      <button id="detail-create-board" type="button" class="secondary-btn">+ Create new board</button>
+
+      <h3>Related topics</h3>
+      <div class="chip-row" id="topics-row">
+        <button type="button" data-topic="Room" class="chip">Room</button>
+        <button type="button" data-topic="Car" class="chip">Car</button>
+        <button type="button" data-topic="Movie" class="chip">Movie</button>
+        <button type="button" data-topic="Item" class="chip">Item</button>
+        <button type="button" data-topic="Other" class="chip">Other</button>
+      </div>
+
+      <label class="check-row"><input type="checkbox" id="product-toggle" /> Tag a product</label>
+      <div id="product-fields" class="hidden">
+        <input id="product-name" placeholder="Product name" />
+        <input id="product-link" placeholder="Product link (optional)" />
+      </div>
+
+      <label class="check-row"><input type="checkbox" id="comments-allowed" checked /> Allow comments</label>
+
+      <p id="details-error" class="error hidden"></p>
+      <div class="field-row">
+        <button id="details-back" type="button" class="secondary-btn">Back</button>
+        <button id="details-next" type="button">Next</button>
+      </div>
+    </section>
+
+    <!-- Step: Publish -->
+    <section id="step-publish" class="step hidden">
+      <h3>Final preview</h3>
+      <div id="publish-preview"></div>
+      <p id="publish-summary" class="muted"></p>
+      <div id="publish-progress" class="hidden">
+        <div class="progress-track"><div id="publish-progress-bar" class="progress-bar"></div></div>
+        <p id="publish-progress-text">0%</p>
+      </div>
+      <p id="publish-error" class="error hidden"></p>
+      <button id="publish-btn" type="button">Publish</button>
+      <button id="publish-retry" type="button" class="secondary-btn hidden">Retry</button>
+      <button id="publish-back" type="button" class="secondary-btn">Back</button>
+    </section>
+  </div>
+
+  <!-- ============ PIN VIEW ============ -->
+  <div id="pin-view" class="view">
+    <div class="top-bar">
+      <button id="pin-back" type="button" class="icon-btn" aria-label="Back">←</button>
+      <h2>Pin</h2>
+      <button id="pin-close" type="button" class="icon-btn" aria-label="Close">✕</button>
+    </div>
+    <p id="pin-published-msg" class="success hidden">Published! Here is your pin.</p>
+    <div id="pin-content"></div>
+    <div id="pin-edit-form" class="hidden">
+      <label>Title <input id="pin-edit-title" /></label>
+      <label>Description <textarea id="pin-edit-description"></textarea></label>
+      <button id="pin-edit-save" type="button">Save changes</button>
+    </div>
+    <div class="field-row wrap">
+      <button id="pin-open-link" type="button" class="secondary-btn">Open link</button>
+      <button id="pin-edit" type="button" class="secondary-btn">Edit</button>
+      <button id="pin-change-board" type="button" class="secondary-btn">Change board</button>
+      <button id="pin-share" type="button" class="secondary-btn">Share</button>
+      <button id="pin-save-toggle" type="button" class="secondary-btn">Save</button>
+      <button id="pin-delete" type="button" class="danger-btn">Delete</button>
+    </div>
+  </div>
+
+  <div id="toast" class="toast hidden"></div>
+
+  <script src="app.js"></script>
+</body>
+</html>
