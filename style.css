@@ -88,3 +88,12 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
   .plus-button { width: 72px; height: 72px; font-size: 44px; }
   body { padding-bottom: 140px; }
 }
+
+.profile-bar { display: flex; align-items: center; gap: 10px; justify-content: center; flex-wrap: wrap; margin: 0 auto 16px; }
+.avatar { width: 44px; height: 44px; border-radius: 50%; background: #c2410c; color: white; display: inline-flex; align-items: center; justify-content: center; font-weight: 800; font-size: 20px; flex-shrink: 0; }
+.avatar.big { width: 72px; height: 72px; font-size: 32px; margin: 8px auto; }
+.small-btn { padding: 8px 14px; font-size: 14px; }
+.auth-card, .profile-card { background: rgba(255,255,255,0.6); backdrop-filter: blur(16px); border: 1px solid rgba(255,255,255,0.7); border-radius: 24px; box-shadow: 0 12px 32px rgba(0,0,0,0.12); padding: 18px; text-align: left; max-width: 480px; margin: 0 auto; }
+.profile-card { text-align: center; }
+.profile-card label { text-align: left; display: block; }
+.profile-card .check-row { justify-content: center; }
