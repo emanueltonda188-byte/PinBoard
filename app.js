@@ -1,17 +1,45 @@
-// PinBoard — Create Pin (+) workflow. Browser web app, localStorage only.
-// Pins: localStorage "pins". Boards: localStorage "pinboards". No cloud upload in this build.
+// PinBoard — Create Pin (+) workflow. Public shared pins via Supabase.
+// Pins + boards live in the pesalink Supabase project (tables pins, boards).
+// Anyone can view the feed; posting needs a real account (Supabase Auth).
+// Local storage keeps only: offline pin cache ("pins-cache"), saved pin ids ("pinboard-saved"), notification pref.
+const SUPABASE_URL = "https://baucxuimppcajcafdsqx.supabase.co";
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJhdWN4dWltcHBjYWpjYWZkc3F4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTMzMDU5MzMsImV4cCI6MjEwODg4MTkzM30.RFUIyH8tSGoQodpCEdijiisXJniUwsZYpmUF_KI-u9k";
+var sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 function $(id) { return document.getElementById(id); }
-function loadPins() { try { return JSON.parse(localStorage.getItem("pins") || "[]"); } catch (e) { return []; } }
-function loadBoards() { try { return JSON.parse(localStorage.getItem("pinboards") || "[]"); } catch (e) { return []; } }
-function savePins() { localStorage.setItem("pins", JSON.stringify(pins)); }
-function saveBoards() { localStorage.setItem("pinboards", JSON.stringify(boards)); }
+// Pins/boards come from Supabase (see loadFeed). These helpers only handle the offline cache + saved ids.
+function loadCache() { try { return JSON.parse(localStorage.getItem("pins-cache") || "[]"); } catch (e) { return []; } }
+function saveCache() { try { localStorage.setItem("pins-cache", JSON.stringify(pins)); } catch (e) {} }
+function loadSavedIds() { try { return new Set(JSON.parse(localStorage.getItem("pinboard-saved") || "[]")); } catch (e) { return new Set(); } }
+function saveSavedIds() { localStorage.setItem("pinboard-saved", JSON.stringify(Array.from(savedIds))); }
+function displayName(user) {
+  if (!user) { return "PinBoard"; }
+  return (user.user_metadata && user.user_metadata.display_name) || (user.email ? user.email.split("@")[0] : "PinBoard");
+}
+function dbToPin(r) {
+  return { id: r.id, user_id: r.user_id || null, author_name: r.author_name || "PinBoard",
+    title: r.title, description: r.description || "", link: r.link || "",
+    category: r.category || "Other", topics: Array.isArray(r.topics) ? r.topics : [],
+    boardId: r.board_id || null, board_private: !!r.board_private,
+    image: r.image || "", media: Array.isArray(r.media) ? r.media : [],
+    layout: r.layout || "single", product: r.product || null,
+    commentsAllowed: r.comments_allowed !== false, saved: savedIds.has(r.id),
+    createdAt: r.created_at || "" };
+}
+function pinToDb(p, user) {
+  return { user_id: user.id, author_name: displayName(user), title: p.title,
+    description: p.description, link: p.link, category: p.category, topics: p.topics,
+    board_id: p.boardId, board_private: p.board_private, image: p.image, media: p.media,
+    layout: p.layout, product: p.product, comments_allowed: p.commentsAllowed };
+}
 function uid() { return "id-" + Date.now() + "-" + Math.floor(Math.random() * 100000); }
 function showToast(msg) { var t = $("toast"); t.textContent = msg; t.classList.remove("hidden"); setTimeout(function() { t.classList.add("hidden"); }, 2500); }
 function escapeHtml(s) { return String(s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;"); }
 
-var pins = loadPins();
-var boards = loadBoards();
+var pins = [];
+var boards = [];
+var savedIds = loadSavedIds();
+var currentUser = null;
 var currentSearch = "";
 var currentCategory = "All";
 var flowMode = "pin"; // pin | collage
@@ -55,14 +83,22 @@ function pinCard(pin, index) {
     var firstType = pin.media && pin.media[0] ? pin.media[0].type : "image";
     mediaHtml = firstType === "video" ? '<video src="' + first + '" controls muted></video>' : '<img src="' + first + '" alt="Pin photo">';
   }
+  var own = currentUser && pin.user_id === currentUser.id;
   card.innerHTML = mediaHtml + "<h3>" + escapeHtml(pin.title) + "</h3><p>" + escapeHtml(pin.category || "") + "</p>" +
+    "<p class=\"muted\">by " + escapeHtml(pin.author_name || "PinBoard") + "</p>" +
     (pin.link ? '<p><a href="' + escapeHtml(pin.link) + '" target="_blank">Open link ↗</a></p>' : "") +
-    "<button type=\"button\">Delete</button>";
+    (own ? "<button type=\"button\">Delete</button>" : "");
   card.addEventListener("click", function(e) { if (e.target.tagName !== "BUTTON" && e.target.tagName !== "A") { openPin(pin.id); } });
-  card.querySelector("button").addEventListener("click", function(e) {
-    e.stopPropagation();
-    if (window.confirm("Delete this pin?")) { pins = pins.filter(function(p) { return p.id !== pin.id; }); savePins(); renderFeed(); }
-  });
+  var delBtn = card.querySelector("button");
+  if (delBtn) {
+    delBtn.addEventListener("click", async function(e) {
+      e.stopPropagation();
+      if (!window.confirm("Delete this pin?")) { return; }
+      var res = await sb.from("pins").delete().eq("id", pin.id);
+      if (res.error) { showToast("Could not delete: " + res.error.message); return; }
+      pins = pins.filter(function(p) { return p.id !== pin.id; }); saveCache(); renderFeed();
+    });
+  }
   return card;
 }
 function renderFeed() {
@@ -88,16 +124,39 @@ function renderFeed() {
   });
   $("feed-empty").classList.toggle("hidden", shown !== 0);
 }
-// First paint happens in gate() at the end of this file (login first, feed after).
+async function loadFeed() {
+  try {
+    var bq = await sb.from("boards").select("*").order("name");
+    if (!bq.error && Array.isArray(bq.data)) { boards = bq.data; }
+    var pq = sb.from("pins").select("*").order("created_at", { ascending: false }).limit(100);
+    if (currentUser) { pq = pq.or("board_private.eq.false,user_id.eq." + currentUser.id); }
+    else { pq = pq.eq("board_private", false); }
+    var pr = await pq;
+    if (pr.error) { throw pr.error; }
+    pins = (pr.data || []).map(dbToPin);
+    saveCache();
+    $("feed-error").classList.add("hidden");
+  } catch (e) {
+    pins = loadCache().map(function(p) { p.saved = savedIds.has(p.id); return p; });
+    var fe = $("feed-error");
+    fe.textContent = "Could not load fresh pins — showing saved ones. Check your connection and tap Search to retry.";
+    fe.classList.remove("hidden");
+  }
+  renderFeed();
+}
+// First paint happens in gate() at the end of this file (public feed first, no login needed).
 
 $("search").addEventListener("input", function() { currentSearch = $("search").value.trim().toLowerCase(); renderFeed(); });
-$("search-button").addEventListener("click", function() { currentSearch = $("search").value.trim().toLowerCase(); renderFeed(); });
+$("search-button").addEventListener("click", function() { currentSearch = $("search").value.trim().toLowerCase(); loadFeed(); });
 document.querySelectorAll("#filters button").forEach(function(btn) {
   btn.addEventListener("click", function() { currentCategory = btn.dataset.category; renderFeed(); });
 });
 
 // ---------- Plus menu ----------
-$("plus-button").addEventListener("click", function() { openSheet("plus-sheet"); });
+$("plus-button").addEventListener("click", function() {
+  if (!currentUser) { showView("auth-view"); showToast("Log in to post a pin."); return; }
+  openSheet("plus-sheet");
+});
 $("plus-sheet-close").addEventListener("click", closeSheets);
 $("sheet-overlay").addEventListener("click", closeSheets);
 $("menu-create-pin").addEventListener("click", function() { closeSheets(); startFlow("pin"); });
@@ -132,6 +191,25 @@ $("editor-add-more").addEventListener("click", triggerPicker);
 $("media-input").addEventListener("cancel", function() {
   if (mediaItems.length === 0) { $("picker-cancelled").classList.remove("hidden"); }
 });
+// Shrink big photos before they go online, so the shared feed stays light on weak data.
+function downscaleImage(dataUrl) {
+  return new Promise(function(resolve) {
+    var img = new Image();
+    img.onload = function() {
+      var max = 1200;
+      var w = img.naturalWidth, h = img.naturalHeight;
+      if (w <= max && h <= max) { resolve(dataUrl); return; }
+      var s = Math.min(max / w, max / h);
+      var c = document.createElement("canvas");
+      c.width = Math.round(w * s); c.height = Math.round(h * s);
+      c.getContext("2d").drawImage(img, 0, 0, c.width, c.height);
+      resolve(c.toDataURL("image/jpeg", 0.82));
+    };
+    img.onerror = function() { resolve(dataUrl); };
+    img.src = dataUrl;
+  });
+}
+
 $("media-input").addEventListener("change", function() {
   var files = Array.prototype.slice.call($("media-input").files || []);
   $("picker-cancelled").classList.add("hidden");
@@ -140,8 +218,16 @@ $("media-input").addEventListener("change", function() {
   files.forEach(function(file) {
     var reader = new FileReader();
     reader.onload = function() {
-      mediaItems.push({ type: file.type.indexOf("video") === 0 ? "video" : "image", url: reader.result, name: file.name, selected: true, editor: newEditor() });
-      remaining--; if (remaining === 0) { renderPicker(); }
+      var dataUrl = reader.result;
+      if (file.type.indexOf("image") === 0) {
+        downscaleImage(dataUrl).then(function(small) {
+          mediaItems.push({ type: "image", url: small, name: file.name, selected: true, editor: newEditor() });
+          remaining--; if (remaining === 0) { renderPicker(); }
+        });
+      } else {
+        mediaItems.push({ type: file.type.indexOf("video") === 0 ? "video" : "image", url: dataUrl, name: file.name, selected: true, editor: newEditor() });
+        remaining--; if (remaining === 0) { renderPicker(); }
+      }
     };
     reader.onerror = function() { failed++; remaining--; if (remaining === 0) { renderPicker(); showToast("Some files could not be read. Try smaller files."); } };
     reader.readAsDataURL(file);
@@ -275,16 +361,23 @@ function openBoardSheet(mode) {
 function renderBoardList() {
   var q = $("board-search").value.trim().toLowerCase();
   var list = $("board-list"); list.innerHTML = "";
-  var filtered = boards.filter(function(b) { return !q || b.name.toLowerCase().indexOf(q) !== -1; });
+  var filtered = boards.filter(function(b) {
+    if (b.private && (!currentUser || b.user_id !== currentUser.id)) { return false; }
+    return !q || b.name.toLowerCase().indexOf(q) !== -1;
+  });
   filtered.forEach(function(b) {
     var firstPin = pins.find(function(p) { return p.boardId === b.id; });
     var thumb = firstPin && firstPin.image ? '<img src="' + firstPin.image + '" alt="">' : b.name.slice(0, 1).toUpperCase();
     var btn = document.createElement("button"); btn.type = "button"; btn.className = "board-item";
     btn.innerHTML = '<span class="board-thumb">' + thumb + '</span><span class="menu-text"><strong>' + escapeHtml(b.name) + '</strong><small>' + boardCount(b.id) + " pins" + (b.private ? " • Private" : " • Public") + "</small></span><span class=\"menu-arrow\">›</span>";
-    btn.addEventListener("click", function() {
+    btn.addEventListener("click", async function() {
       if (boardSheetMode === "change-board" && currentPinId) {
         var pin = pins.find(function(p) { return p.id === currentPinId; });
-        if (pin) { pin.boardId = b.id; pin.category = pin.category; savePins(); renderFeed(); renderPinView(); showToast("Board changed."); }
+        if (pin) {
+          var upd = await sb.from("pins").update({ board_id: b.id, board_private: !!b.private }).eq("id", pin.id);
+          if (upd.error) { showToast("Could not move pin: " + upd.error.message); closeSheets(); return; }
+          pin.boardId = b.id; pin.board_private = !!b.private; saveCache(); renderFeed(); renderPinView(); showToast("Board changed.");
+        }
       } else {
         selectedBoardId = b.id; updateBoardName();
         if (boardSheetMode === "select") { closeSheets(); showStep("step-details", "Pin details"); }
@@ -298,14 +391,20 @@ function renderBoardList() {
 $("board-search").addEventListener("input", renderBoardList);
 $("board-sheet-close").addEventListener("click", closeSheets);
 $("board-show-create").addEventListener("click", function() { $("board-create-form").classList.remove("hidden"); });
-$("board-create-save").addEventListener("click", function() {
+$("board-create-save").addEventListener("click", async function() {
   var name = $("board-name").value.trim(); var err = $("board-create-error"); err.classList.add("hidden");
   if (!name) { err.textContent = "Board name is required."; err.classList.remove("hidden"); return; }
-  var board = { id: uid(), name: name, private: $("board-private").checked, createdAt: new Date().toISOString() };
-  boards.push(board); saveBoards(); $("board-name").value = ""; $("board-private").checked = false;
+  if (!currentUser) { err.textContent = "Log in to create a board."; err.classList.remove("hidden"); return; }
+  var ins = await sb.from("boards").insert({ user_id: currentUser.id, name: name, private: $("board-private").checked }).select().single();
+  if (ins.error) { err.textContent = "Could not create board: " + ins.error.message; err.classList.remove("hidden"); return; }
+  var board = ins.data;
+  boards.push(board); $("board-name").value = ""; $("board-private").checked = false;
   if (boardSheetMode === "change-board" && currentPinId) {
     var pin = pins.find(function(p) { return p.id === currentPinId; });
-    if (pin) { pin.boardId = board.id; savePins(); renderFeed(); renderPinView(); }
+    if (pin) {
+      var upd = await sb.from("pins").update({ board_id: board.id, board_private: !!board.private }).eq("id", pin.id);
+      if (!upd.error) { pin.boardId = board.id; pin.board_private = !!board.private; saveCache(); renderFeed(); renderPinView(); }
+    }
     closeSheets(); showToast("Board created and pin moved.");
   } else {
     selectedBoardId = board.id; updateBoardName(); renderBoardList(); closeSheets(); showStep("step-details", "Pin details"); showToast("Board created.");
@@ -335,7 +434,7 @@ function publishPin() {
   publishing = true; $("publish-btn").disabled = true; $("publish-btn").textContent = "Publishing…";
   $("publish-progress").classList.remove("hidden");
   var percent = 0;
-  var timer = setInterval(function() {
+  var timer = setInterval(async function() {
     percent += 5;
     if (percent > 100) { percent = 100; }
     $("publish-progress-bar").style.width = percent + "%";
@@ -343,15 +442,20 @@ function publishPin() {
     if (percent >= 100) {
       clearInterval(timer);
       try {
-        var pin = {
-          id: uid(), title: title, description: $("detail-description").value.trim(), link: $("detail-link").value.trim(),
+        var board = selectedBoardId ? boardById(selectedBoardId) : null;
+        var pinData = {
+          title: title, description: $("detail-description").value.trim(), link: $("detail-link").value.trim(),
           category: selectedTopics[0] || "Other", topics: selectedTopics.slice(), boardId: selectedBoardId,
+          board_private: board ? !!board.private : false,
           image: sel[0].url, media: sel.map(function(m) { return { type: m.type, url: m.url, editor: m.editor }; }),
           layout: flowMode === "collage" ? "collage" : "single",
           product: $("product-toggle").checked ? { name: $("product-name").value.trim(), link: $("product-link").value.trim() } : null,
-          commentsAllowed: $("comments-allowed").checked, saved: false, createdAt: new Date().toISOString()
+          commentsAllowed: $("comments-allowed").checked
         };
-        pins.push(pin); savePins();
+        var ins = await sb.from("pins").insert(pinToDb(pinData, currentUser)).select().single();
+        if (ins.error) { throw new Error(ins.error.message); }
+        var pin = dbToPin(ins.data);
+        pins.unshift(pin); saveCache();
         publishing = false; $("publish-btn").disabled = false; $("publish-btn").textContent = "Publish";
         renderFeed(); currentPinId = pin.id;
         $("pin-published-msg").classList.remove("hidden");
@@ -382,9 +486,13 @@ function renderPinView() {
     var style = ed ? "transform:rotate(" + ed.rotation + "deg);filter:" + editorFilterCss(ed) + ";" : "";
     mediaHtml = '<div style="position:relative;"><img src="' + (pin.image || "") + '" alt="Pin photo" style="' + style + '">' + (ed && ed.text ? '<div class="overlay-text ' + ed.position + '" style="color:' + ed.color + ';font-size:' + ed.size + 'px;">' + escapeHtml(ed.text) + "</div>" : "") + "</div>";
   }
-  $("pin-content").innerHTML = mediaHtml + "<h3>" + escapeHtml(pin.title) + "</h3><p>" + escapeHtml(pin.description || "") + "</p><p class=\"muted\">" + escapeHtml(pin.category || "") + (board ? " • Board: " + escapeHtml(board.name) : "") + (pin.topics && pin.topics.length ? " • " + escapeHtml(pin.topics.join(", ")) : "") + "</p>" + (pin.link ? '<p><a href="' + escapeHtml(pin.link) + '" target="_blank">Open link ↗</a></p>' : "");
+  $("pin-content").innerHTML = mediaHtml + "<h3>" + escapeHtml(pin.title) + "</h3><p>" + escapeHtml(pin.description || "") + "</p><p class=\"muted\">by " + escapeHtml(pin.author_name || "PinBoard") + " • " + escapeHtml(pin.category || "") + (board ? " • Board: " + escapeHtml(board.name) : "") + (pin.topics && pin.topics.length ? " • " + escapeHtml(pin.topics.join(", ")) : "") + "</p>" + (pin.link ? '<p><a href="' + escapeHtml(pin.link) + '" target="_blank">Open link ↗</a></p>' : "");
   $("pin-save-toggle").textContent = pin.saved ? "Saved ✓" : "Save";
   $("pin-open-link").style.display = pin.link ? "" : "none";
+  var own = currentUser && pin.user_id === currentUser.id;
+  $("pin-edit").style.display = own ? "" : "none";
+  $("pin-change-board").style.display = own ? "" : "none";
+  $("pin-delete").style.display = own ? "" : "none";
 }
 function openPin(id) { currentPinId = id; $("pin-published-msg").classList.add("hidden"); $("pin-edit-form").classList.add("hidden"); renderPinView(); showView("pin-view"); }
 $("pin-back").addEventListener("click", function() { showView("feed-view"); renderFeed(); });
@@ -396,10 +504,14 @@ $("pin-edit").addEventListener("click", function() {
   $("pin-edit-title").value = pin.title; $("pin-edit-description").value = pin.description || "";
   $("pin-edit-form").classList.toggle("hidden");
 });
-$("pin-edit-save").addEventListener("click", function() {
+$("pin-edit-save").addEventListener("click", async function() {
   var pin = pins.find(function(p) { return p.id === currentPinId; }); if (!pin) { return; }
-  pin.title = $("pin-edit-title").value.trim() || pin.title; pin.description = $("pin-edit-description").value.trim();
-  savePins(); $("pin-edit-form").classList.add("hidden"); renderPinView(); renderFeed(); showToast("Pin updated.");
+  var newTitle = $("pin-edit-title").value.trim() || pin.title;
+  var newDesc = $("pin-edit-description").value.trim();
+  var upd = await sb.from("pins").update({ title: newTitle, description: newDesc }).eq("id", pin.id);
+  if (upd.error) { showToast("Could not save: " + upd.error.message); return; }
+  pin.title = newTitle; pin.description = newDesc;
+  saveCache(); $("pin-edit-form").classList.add("hidden"); renderPinView(); renderFeed(); showToast("Pin updated.");
 });
 $("pin-change-board").addEventListener("click", function() { openBoardSheet("change-board"); });
 $("pin-share").addEventListener("click", function() {
@@ -411,25 +523,29 @@ $("pin-share").addEventListener("click", function() {
 });
 $("pin-save-toggle").addEventListener("click", function() {
   var pin = pins.find(function(p) { return p.id === currentPinId; }); if (!pin) { return; }
-  pin.saved = !pin.saved; savePins(); renderPinView(); showToast(pin.saved ? "Saved." : "Unsaved.");
+  if (savedIds.has(pin.id)) { savedIds.delete(pin.id); } else { savedIds.add(pin.id); }
+  saveSavedIds(); pin.saved = savedIds.has(pin.id); renderPinView(); showToast(pin.saved ? "Saved." : "Unsaved.");
 });
-$("pin-delete").addEventListener("click", function() {
+$("pin-delete").addEventListener("click", async function() {
   if (!window.confirm("Delete this pin? This cannot be undone.")) { return; }
-  pins = pins.filter(function(p) { return p.id !== currentPinId; }); savePins(); renderFeed(); showView("feed-view");
+  var del = await sb.from("pins").delete().eq("id", currentPinId);
+  if (del.error) { showToast("Could not delete: " + del.error.message); return; }
+  pins = pins.filter(function(p) { return p.id !== currentPinId; }); saveCache(); renderFeed(); showView("feed-view");
 });
 $("pin-open-link").addEventListener("click", function() {
   var pin = pins.find(function(p) { return p.id === currentPinId; });
   if (pin && pin.link) { window.open(pin.link, "_blank"); }
 });
 
-// ---------- Local-only login (same keys as the VS Code app: pinboard-users, pinboard-session) ----------
-// This login lives only on this device. It does NOT make pins visible to other people —
-// pins are still saved in this browser only until a shared database is added.
-function loadUsers() { try { return JSON.parse(localStorage.getItem("pinboard-users") || "[]"); } catch (e) { return []; } }
-function saveUsers(u) { localStorage.setItem("pinboard-users", JSON.stringify(u)); }
-function currentUser() { try { return JSON.parse(localStorage.getItem("pinboard-session") || "null"); } catch (e) { return null; } }
-function setSession(u) { if (u) { localStorage.setItem("pinboard-session", JSON.stringify(u)); } else { localStorage.removeItem("pinboard-session"); } }
-
+// ---------- Real accounts (Supabase Auth) ----------
+// Anyone can view the feed. Posting needs an account. The old device-only
+// login (pinboard-users) is gone — accounts now live in Supabase, and
+// email confirmation is off, so signup logs you straight in.
+async function refreshAuth() {
+  var res = await sb.auth.getSession();
+  currentUser = (res.data && res.data.session) ? res.data.session.user : null;
+  updateProfileBar();
+}
 function setAuthTab(tab) {
   $("tab-login").classList.toggle("active", tab === "login");
   $("tab-signup").classList.toggle("active", tab === "signup");
@@ -440,15 +556,16 @@ function setAuthTab(tab) {
 $("tab-login").addEventListener("click", function() { setAuthTab("login"); });
 $("tab-signup").addEventListener("click", function() { setAuthTab("signup"); });
 
-$("login-btn").addEventListener("click", function() {
+$("login-btn").addEventListener("click", async function() {
   var email = $("login-email").value.trim().toLowerCase();
   var pw = $("login-password").value;
   var err = $("auth-error"); err.classList.add("hidden");
-  var u = loadUsers().find(function(x) { return x.email === email; });
-  if (!u || u.password !== pw) { err.textContent = "Wrong email or password."; err.classList.remove("hidden"); return; }
-  setSession(u); updateProfileBar(); renderFeed(); showView("feed-view"); showToast("Welcome back, " + u.name + "!");
+  var res = await sb.auth.signInWithPassword({ email: email, password: pw });
+  if (res.error) { err.textContent = res.error.message; err.classList.remove("hidden"); return; }
+  currentUser = res.data.user;
+  await afterLogin("Welcome back, " + displayName(currentUser) + "!");
 });
-$("signup-btn").addEventListener("click", function() {
+$("signup-btn").addEventListener("click", async function() {
   var name = $("signup-name").value.trim();
   var email = $("signup-email").value.trim().toLowerCase();
   var pw = $("signup-password").value;
@@ -456,54 +573,84 @@ $("signup-btn").addEventListener("click", function() {
   if (!name) { err.textContent = "Add your name."; err.classList.remove("hidden"); return; }
   if (!email) { err.textContent = "Add your email."; err.classList.remove("hidden"); return; }
   if (pw.length < 4) { err.textContent = "Password needs at least 4 characters."; err.classList.remove("hidden"); return; }
-  var users = loadUsers();
-  if (users.some(function(x) { return x.email === email; })) { err.textContent = "That email already has an account — log in instead."; err.classList.remove("hidden"); return; }
-  var u = { name: name, email: email, password: pw };
-  users.push(u); saveUsers(users); setSession(u);
-  updateProfileBar(); renderFeed(); showView("feed-view"); showToast("Welcome, " + name + "!");
+  var res = await sb.auth.signUp({ email: email, password: pw, options: { data: { display_name: name } } });
+  if (res.error) { err.textContent = res.error.message; err.classList.remove("hidden"); return; }
+  currentUser = res.data.user;
+  await afterLogin("Welcome, " + name + "!");
 });
+async function afterLogin(msg) {
+  updateProfileBar();
+  await migrateLocalPins();
+  await loadFeed();
+  showView("feed-view");
+  showToast(msg);
+}
+async function migrateLocalPins() {
+  // One-time move: pins posted on this phone before the public switch go online under your name.
+  var local = [];
+  try { local = JSON.parse(localStorage.getItem("pins") || "[]"); } catch (e) { local = []; }
+  if (!currentUser || !local.length) { return; }
+  var moved = 0;
+  for (var i = 0; i < local.length; i++) {
+    var p = local[i];
+    var row = pinToDb({
+      title: p.title || "Untitled", description: p.description || "", link: p.link || "",
+      category: p.category || "Other", topics: p.topics || [],
+      boardId: null, board_private: false, image: p.image || (p.media && p.media[0] ? p.media[0].url : ""),
+      media: p.media || [], layout: p.layout || "single", product: p.product || null,
+      commentsAllowed: p.commentsAllowed !== false
+    }, currentUser);
+    var ins = await sb.from("pins").insert(row);
+    if (!ins.error) { moved++; }
+  }
+  localStorage.removeItem("pins");
+  localStorage.removeItem("pinboards");
+  if (moved) { showToast("Moved " + moved + " pin" + (moved === 1 ? "" : "s") + " from this phone online."); }
+}
 
 function updateProfileBar() {
-  var u = currentUser(); if (!u) { return; }
-  $("profile-avatar").textContent = (u.name || "?").slice(0, 1).toUpperCase();
-  $("profile-greeting").textContent = "Hi, " + u.name + "!";
+  var u = currentUser;
+  $("profile-bar-logged-in").classList.toggle("hidden", !u);
+  $("profile-bar-logged-out").classList.toggle("hidden", !!u);
+  if (!u) { return; }
+  $("profile-avatar").textContent = (displayName(u) || "?").slice(0, 1).toUpperCase();
+  $("profile-greeting").textContent = "Hi, " + displayName(u) + "!";
 }
 function renderProfile() {
-  var u = currentUser(); if (!u) { showView("auth-view"); return; }
-  $("profile-avatar-big").textContent = (u.name || "?").slice(0, 1).toUpperCase();
-  $("profile-name").textContent = u.name;
-  $("profile-email").textContent = u.email;
-  var saved = pins.filter(function(p) { return p.saved; }).length;
-  $("profile-stats").textContent = pins.length + " pins • " + boards.length + " boards • " + saved + " saved";
-  $("profile-edit-name").value = u.name;
+  var u = currentUser; if (!u) { showView("auth-view"); return; }
+  $("profile-avatar-big").textContent = (displayName(u) || "?").slice(0, 1).toUpperCase();
+  $("profile-name").textContent = displayName(u);
+  $("profile-email").textContent = u.email || "";
+  var mine = pins.filter(function(p) { return p.user_id === u.id; });
+  var myBoards = boards.filter(function(b) { return b.user_id === u.id; });
+  $("profile-stats").textContent = mine.length + " pins • " + myBoards.length + " boards • " + savedIds.size + " saved";
+  $("profile-edit-name").value = displayName(u);
   $("notifications-toggle").checked = localStorage.getItem("pinboard-notifications") !== "off";
 }
 $("profile-open").addEventListener("click", function() { renderProfile(); showView("profile-view"); });
 $("profile-back").addEventListener("click", function() { showView("feed-view"); renderFeed(); });
-$("logout-btn").addEventListener("click", function() { setSession(null); showView("auth-view"); showToast("Logged out."); });
-$("profile-save-name").addEventListener("click", function() {
-  var u = currentUser(); if (!u) { return; }
+$("login-open-btn").addEventListener("click", function() { setAuthTab("login"); showView("auth-view"); });
+$("logout-btn").addEventListener("click", async function() {
+  await sb.auth.signOut(); currentUser = null; updateProfileBar(); await loadFeed();
+  showView("feed-view"); showToast("Logged out.");
+});
+$("profile-save-name").addEventListener("click", async function() {
+  var u = currentUser; if (!u) { return; }
   var name = $("profile-edit-name").value.trim(); if (!name) { return; }
-  var users = loadUsers();
-  var rec = users.find(function(x) { return x.email === u.email; });
-  if (rec) { rec.name = name; saveUsers(users); }
-  u.name = name; setSession(u); updateProfileBar(); renderProfile(); showToast("Name updated.");
+  var res = await sb.auth.updateUser({ data: { display_name: name } });
+  if (res.error) { showToast("Could not save: " + res.error.message); return; }
+  currentUser = res.data.user;
+  updateProfileBar(); renderProfile(); showToast("Name updated. New pins will use it.");
 });
 $("notifications-toggle").addEventListener("change", function() {
   localStorage.setItem("pinboard-notifications", $("notifications-toggle").checked ? "on" : "off");
   showToast($("notifications-toggle").checked ? "Notifications on." : "Notifications off.");
 });
-$("profile-delete").addEventListener("click", function() {
-  var u = currentUser(); if (!u) { return; }
-  if (!window.confirm("Delete your account on this device? Your pins stay on this device, but this login is gone.")) { return; }
-  saveUsers(loadUsers().filter(function(x) { return x.email !== u.email; }));
-  setSession(null); showView("auth-view"); showToast("Account deleted.");
-});
 
-// ---------- Gate: login screen first, feed only after login ----------
-function gate() {
-  var u = currentUser();
-  if (!u) { setAuthTab("login"); showView("auth-view"); return; }
-  updateProfileBar(); renderFeed(); showView("feed-view");
+// ---------- Gate: public feed first; login only needed to post ----------
+async function gate() {
+  await refreshAuth();
+  await loadFeed();
+  showView("feed-view");
 }
 gate();

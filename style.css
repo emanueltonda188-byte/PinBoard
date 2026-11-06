@@ -97,3 +97,12 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
 .profile-card { text-align: center; }
 .profile-card label { text-align: left; display: block; }
 .profile-card .check-row { justify-content: center; }
+
+/* Profile bar: logged-in items vs logged-out Log in button */
+#profile-bar-logged-in, #profile-bar-logged-out {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: center;
+}

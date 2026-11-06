@@ -18,10 +18,15 @@
     </header>
 
     <div id="profile-bar" class="profile-bar">
-      <span id="profile-avatar" class="avatar">?</span>
-      <span id="profile-greeting" class="muted">Hi!</span>
-      <button id="profile-open" type="button" class="secondary-btn small-btn">Profile</button>
-      <button id="logout-btn" type="button" class="secondary-btn small-btn">Log out</button>
+      <span id="profile-bar-logged-out">
+        <button id="login-open-btn" type="button" class="secondary-btn small-btn">Log in</button>
+      </span>
+      <span id="profile-bar-logged-in" class="hidden">
+        <span id="profile-avatar" class="avatar">?</span>
+        <span id="profile-greeting" class="muted">Hi!</span>
+        <button id="profile-open" type="button" class="secondary-btn small-btn">Profile</button>
+        <button id="logout-btn" type="button" class="secondary-btn small-btn">Log out</button>
+      </span>
     </div>
 
     <div class="search-row">
@@ -43,6 +48,7 @@
     <main id="grid-landscape"></main>
 
     <p id="feed-empty" class="empty hidden">No pins yet. Tap + to create your first pin.</p>
+    <p id="feed-error" class="error hidden"></p>
   </div>
 
   <!-- Plus button: preserved, top right, big orange circle. Now opens the menu, not create.html -->
@@ -265,7 +271,7 @@
         <button id="signup-btn" type="button">Create account</button>
       </div>
       <p id="auth-error" class="error hidden"></p>
-      <p class="muted">This login lives only on this device — it is not a real online account. Don't use a real password here.</p>
+      <p class="muted">This is a real PinBoard account. Your pins post under your name and everyone can see them. Use a password you remember — you can reset it by email if you forget.</p>
     </div>
   </div>
 
@@ -284,12 +290,13 @@
       <label>Display name <input id="profile-edit-name" /></label>
       <button id="profile-save-name" type="button">Save name</button>
       <label class="check-row"><input type="checkbox" id="notifications-toggle" /> Notifications</label>
-      <button id="profile-delete" type="button" class="danger-btn">Delete account</button>
+      <p class="muted">Accounts are managed in Supabase — there is no self-delete button here.</p>
     </div>
   </div>
 
   <div id="toast" class="toast hidden"></div>
 
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="app.js"></script>
 </body>
 </html>
