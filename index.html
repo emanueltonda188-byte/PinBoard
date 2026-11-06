@@ -17,6 +17,13 @@
       <p>Save ideas.</p>
     </header>
 
+    <div id="profile-bar" class="profile-bar">
+      <span id="profile-avatar" class="avatar">?</span>
+      <span id="profile-greeting" class="muted">Hi!</span>
+      <button id="profile-open" type="button" class="secondary-btn small-btn">Profile</button>
+      <button id="logout-btn" type="button" class="secondary-btn small-btn">Log out</button>
+    </div>
+
     <div class="search-row">
       <input id="search" placeholder="Search pins" />
       <button id="search-button" type="button">Search</button>
@@ -31,10 +38,8 @@
       <button type="button" data-category="Other">Other</button>
     </div>
 
-    <h2>Vertical • 9:16</h2>
     <main id="grid"></main>
 
-    <h2>Landscape • 16:9</h2>
     <main id="grid-landscape"></main>
 
     <p id="feed-empty" class="empty hidden">No pins yet. Tap + to create your first pin.</p>
@@ -236,6 +241,50 @@
       <button id="pin-share" type="button" class="secondary-btn">Share</button>
       <button id="pin-save-toggle" type="button" class="secondary-btn">Save</button>
       <button id="pin-delete" type="button" class="danger-btn">Delete</button>
+    </div>
+  </div>
+
+  <!-- ============ AUTH VIEW (local-only login, same as the VS Code app) ============ -->
+  <div id="auth-view" class="view">
+    <h1>📌 PinBoard</h1>
+    <p class="muted">Save ideas.</p>
+    <div class="auth-card">
+      <div class="tabs" role="tablist">
+        <button id="tab-login" type="button" class="tab active">Log in</button>
+        <button id="tab-signup" type="button" class="tab">Sign up</button>
+      </div>
+      <div id="login-form">
+        <input id="login-email" type="email" placeholder="Email" />
+        <input id="login-password" type="password" placeholder="Password" />
+        <button id="login-btn" type="button">Log in</button>
+      </div>
+      <div id="signup-form" class="hidden">
+        <input id="signup-name" placeholder="Your name" />
+        <input id="signup-email" type="email" placeholder="Email" />
+        <input id="signup-password" type="password" placeholder="Password (at least 4 characters)" />
+        <button id="signup-btn" type="button">Create account</button>
+      </div>
+      <p id="auth-error" class="error hidden"></p>
+      <p class="muted">This login lives only on this device — it is not a real online account. Don't use a real password here.</p>
+    </div>
+  </div>
+
+  <!-- ============ PROFILE VIEW ============ -->
+  <div id="profile-view" class="view">
+    <div class="top-bar">
+      <button id="profile-back" type="button" class="icon-btn" aria-label="Back">←</button>
+      <h2>Profile</h2>
+      <span></span>
+    </div>
+    <div class="profile-card">
+      <span id="profile-avatar-big" class="avatar big">?</span>
+      <h3 id="profile-name"></h3>
+      <p id="profile-email" class="muted"></p>
+      <p id="profile-stats" class="muted"></p>
+      <label>Display name <input id="profile-edit-name" /></label>
+      <button id="profile-save-name" type="button">Save name</button>
+      <label class="check-row"><input type="checkbox" id="notifications-toggle" /> Notifications</label>
+      <button id="profile-delete" type="button" class="danger-btn">Delete account</button>
     </div>
   </div>
 
