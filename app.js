@@ -31,7 +31,8 @@ function boardById(id) { return boards.find(function(b) { return b.id === id; })
 function boardCount(id) { return pins.filter(function(p) { return p.boardId === id; }).length; }
 
 function showView(viewId) {
-  ["feed-view", "create-view", "pin-view"].forEach(function(id) { $(id).classList.toggle("active", id === viewId); });
+  ["feed-view", "create-view", "pin-view", "auth-view", "profile-view"].forEach(function(id) { $(id).classList.toggle("active", id === viewId); });
+  $("plus-button").classList.toggle("hidden", viewId === "auth-view");
   closeSheets();
   window.scrollTo(0, 0);
 }
@@ -87,7 +88,7 @@ function renderFeed() {
   });
   $("feed-empty").classList.toggle("hidden", shown !== 0);
 }
-renderFeed();
+// First paint happens in gate() at the end of this file (login first, feed after).
 
 $("search").addEventListener("input", function() { currentSearch = $("search").value.trim().toLowerCase(); renderFeed(); });
 $("search-button").addEventListener("click", function() { currentSearch = $("search").value.trim().toLowerCase(); renderFeed(); });
@@ -420,3 +421,89 @@ $("pin-open-link").addEventListener("click", function() {
   var pin = pins.find(function(p) { return p.id === currentPinId; });
   if (pin && pin.link) { window.open(pin.link, "_blank"); }
 });
+
+// ---------- Local-only login (same keys as the VS Code app: pinboard-users, pinboard-session) ----------
+// This login lives only on this device. It does NOT make pins visible to other people —
+// pins are still saved in this browser only until a shared database is added.
+function loadUsers() { try { return JSON.parse(localStorage.getItem("pinboard-users") || "[]"); } catch (e) { return []; } }
+function saveUsers(u) { localStorage.setItem("pinboard-users", JSON.stringify(u)); }
+function currentUser() { try { return JSON.parse(localStorage.getItem("pinboard-session") || "null"); } catch (e) { return null; } }
+function setSession(u) { if (u) { localStorage.setItem("pinboard-session", JSON.stringify(u)); } else { localStorage.removeItem("pinboard-session"); } }
+
+function setAuthTab(tab) {
+  $("tab-login").classList.toggle("active", tab === "login");
+  $("tab-signup").classList.toggle("active", tab === "signup");
+  $("login-form").classList.toggle("hidden", tab !== "login");
+  $("signup-form").classList.toggle("hidden", tab !== "signup");
+  $("auth-error").classList.add("hidden");
+}
+$("tab-login").addEventListener("click", function() { setAuthTab("login"); });
+$("tab-signup").addEventListener("click", function() { setAuthTab("signup"); });
+
+$("login-btn").addEventListener("click", function() {
+  var email = $("login-email").value.trim().toLowerCase();
+  var pw = $("login-password").value;
+  var err = $("auth-error"); err.classList.add("hidden");
+  var u = loadUsers().find(function(x) { return x.email === email; });
+  if (!u || u.password !== pw) { err.textContent = "Wrong email or password."; err.classList.remove("hidden"); return; }
+  setSession(u); updateProfileBar(); renderFeed(); showView("feed-view"); showToast("Welcome back, " + u.name + "!");
+});
+$("signup-btn").addEventListener("click", function() {
+  var name = $("signup-name").value.trim();
+  var email = $("signup-email").value.trim().toLowerCase();
+  var pw = $("signup-password").value;
+  var err = $("auth-error"); err.classList.add("hidden");
+  if (!name) { err.textContent = "Add your name."; err.classList.remove("hidden"); return; }
+  if (!email) { err.textContent = "Add your email."; err.classList.remove("hidden"); return; }
+  if (pw.length < 4) { err.textContent = "Password needs at least 4 characters."; err.classList.remove("hidden"); return; }
+  var users = loadUsers();
+  if (users.some(function(x) { return x.email === email; })) { err.textContent = "That email already has an account — log in instead."; err.classList.remove("hidden"); return; }
+  var u = { name: name, email: email, password: pw };
+  users.push(u); saveUsers(users); setSession(u);
+  updateProfileBar(); renderFeed(); showView("feed-view"); showToast("Welcome, " + name + "!");
+});
+
+function updateProfileBar() {
+  var u = currentUser(); if (!u) { return; }
+  $("profile-avatar").textContent = (u.name || "?").slice(0, 1).toUpperCase();
+  $("profile-greeting").textContent = "Hi, " + u.name + "!";
+}
+function renderProfile() {
+  var u = currentUser(); if (!u) { showView("auth-view"); return; }
+  $("profile-avatar-big").textContent = (u.name || "?").slice(0, 1).toUpperCase();
+  $("profile-name").textContent = u.name;
+  $("profile-email").textContent = u.email;
+  var saved = pins.filter(function(p) { return p.saved; }).length;
+  $("profile-stats").textContent = pins.length + " pins • " + boards.length + " boards • " + saved + " saved";
+  $("profile-edit-name").value = u.name;
+  $("notifications-toggle").checked = localStorage.getItem("pinboard-notifications") !== "off";
+}
+$("profile-open").addEventListener("click", function() { renderProfile(); showView("profile-view"); });
+$("profile-back").addEventListener("click", function() { showView("feed-view"); renderFeed(); });
+$("logout-btn").addEventListener("click", function() { setSession(null); showView("auth-view"); showToast("Logged out."); });
+$("profile-save-name").addEventListener("click", function() {
+  var u = currentUser(); if (!u) { return; }
+  var name = $("profile-edit-name").value.trim(); if (!name) { return; }
+  var users = loadUsers();
+  var rec = users.find(function(x) { return x.email === u.email; });
+  if (rec) { rec.name = name; saveUsers(users); }
+  u.name = name; setSession(u); updateProfileBar(); renderProfile(); showToast("Name updated.");
+});
+$("notifications-toggle").addEventListener("change", function() {
+  localStorage.setItem("pinboard-notifications", $("notifications-toggle").checked ? "on" : "off");
+  showToast($("notifications-toggle").checked ? "Notifications on." : "Notifications off.");
+});
+$("profile-delete").addEventListener("click", function() {
+  var u = currentUser(); if (!u) { return; }
+  if (!window.confirm("Delete your account on this device? Your pins stay on this device, but this login is gone.")) { return; }
+  saveUsers(loadUsers().filter(function(x) { return x.email !== u.email; }));
+  setSession(null); showView("auth-view"); showToast("Account deleted.");
+});
+
+// ---------- Gate: login screen first, feed only after login ----------
+function gate() {
+  var u = currentUser();
+  if (!u) { setAuthTab("login"); showView("auth-view"); return; }
+  updateProfileBar(); renderFeed(); showView("feed-view");
+}
+gate();
