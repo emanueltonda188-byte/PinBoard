@@ -12,9 +12,12 @@
 
   <!-- ============ FEED VIEW (preserved) ============ -->
   <div id="feed-view" class="view active">
-    <header>
-      <h1>📌 PinBoard</h1>
-      <p>Save ideas.</p>
+    <header class="top-bar">
+      <h1>PinBoard</h1>
+      <div>
+        <button id="notifications-button" type="button" class="icon-btn" aria-label="Notifications">🔔</button>
+        <button id="dark-mode-button" type="button" class="icon-btn" aria-label="Dark mode">🌙</button>
+      </div>
     </header>
 
     <div id="profile-bar" class="profile-bar">
@@ -29,6 +32,17 @@
       </span>
     </div>
 
+    <main id="grid"></main>
+
+    <main id="grid-landscape"></main>
+
+    <p id="feed-empty" class="empty hidden">No pins yet. Tap + to create your first pin.</p>
+    <p id="feed-error" class="error hidden"></p>
+  </div>
+
+  <!-- ============ SEARCH VIEW (Instagram-style tab) ============ -->
+  <div id="search-view" class="view">
+    <h2>Search</h2>
     <div class="search-row">
       <input id="search" placeholder="Search pins" />
       <button id="search-button" type="button">Search</button>
@@ -43,12 +57,21 @@
       <button type="button" data-category="Other">Other</button>
     </div>
 
-    <main id="grid"></main>
+    <main id="search-grid"></main>
+    <p id="search-empty" class="empty hidden">No pins match that search yet.</p>
+  </div>
 
-    <main id="grid-landscape"></main>
+  <!-- ============ SAVED VIEW (Instagram-style tab) ============ -->
+  <div id="saved-view" class="view">
+    <h2>Saved</h2>
+    <main id="saved-grid"></main>
+    <p id="saved-empty" class="empty hidden">No saved pins yet. Open a pin and tap Save.</p>
+  </div>
 
-    <p id="feed-empty" class="empty hidden">No pins yet. Tap + to create your first pin.</p>
-    <p id="feed-error" class="error hidden"></p>
+  <!-- ============ NOTIFICATIONS VIEW ============ -->
+  <div id="notifications-view" class="view">
+    <h2>Notifications</h2>
+    <div id="activity-list"></div>
   </div>
 
   <!-- Plus button: preserved, top right, big orange circle. Now opens the menu, not create.html -->
@@ -293,6 +316,15 @@
       <p class="muted">Accounts are managed in Supabase — there is no self-delete button here.</p>
     </div>
   </div>
+
+  <!-- ============ BOTTOM NAV (Instagram-style) ============ -->
+  <nav id="bottom-nav">
+    <button type="button" data-view="feed-view" class="active">🏠<br>Home</button>
+    <button type="button" data-view="search-view">🔍<br>Search</button>
+    <button type="button" id="nav-create" aria-label="Create">+</button>
+    <button type="button" data-view="saved-view">💾<br>Saved</button>
+    <button type="button" data-view="profile-view">👤<br>Profile</button>
+  </nav>
 
   <div id="toast" class="toast hidden"></div>
 

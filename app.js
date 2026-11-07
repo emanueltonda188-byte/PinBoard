@@ -59,10 +59,58 @@ function boardById(id) { return boards.find(function(b) { return b.id === id; })
 function boardCount(id) { return pins.filter(function(p) { return p.boardId === id; }).length; }
 
 function showView(viewId) {
-  ["feed-view", "create-view", "pin-view", "auth-view", "profile-view"].forEach(function(id) { $(id).classList.toggle("active", id === viewId); });
+  ["feed-view", "create-view", "pin-view", "auth-view", "profile-view", "search-view", "saved-view", "notifications-view"].forEach(function(id) { $(id).classList.toggle("active", id === viewId); });
   $("plus-button").classList.toggle("hidden", viewId === "auth-view");
+  var nav = $("bottom-nav");
+  if (nav) { nav.classList.toggle("hidden", viewId === "auth-view"); }
+  document.querySelectorAll("#bottom-nav button[data-view]").forEach(function(btn) {
+    btn.classList.toggle("active", btn.dataset.view === viewId);
+  });
   closeSheets();
   window.scrollTo(0, 0);
+  if (viewId === "search-view") { renderSearchGrid(); }
+  if (viewId === "saved-view") { renderSavedGrid(); }
+  if (viewId === "notifications-view") { renderActivity(); }
+}
+function logActivity(text) {
+  try {
+    var a = JSON.parse(localStorage.getItem("pinboard-activity") || "[]");
+    a.unshift(text);
+    localStorage.setItem("pinboard-activity", JSON.stringify(a.slice(0, 20)));
+  } catch (e) {}
+}
+function renderActivity() {
+  var list = $("activity-list");
+  var a = [];
+  try { a = JSON.parse(localStorage.getItem("pinboard-activity") || "[]"); } catch (e) { a = []; }
+  list.innerHTML = "";
+  if (!a.length) { list.innerHTML = "<div>No activity yet. Save or publish a pin and it will show here.</div>"; return; }
+  a.forEach(function(item) { var d = document.createElement("div"); d.textContent = item; list.appendChild(d); });
+}
+function renderSearchGrid() {
+  var container = $("search-grid");
+  if (!container) { return; }
+  container.innerHTML = "";
+  var shown = 0;
+  pins.forEach(function(pin) {
+    if (currentCategory !== "All" && pin.category !== currentCategory) { return; }
+    if (currentSearch && String(pin.title || "").toLowerCase().indexOf(currentSearch) === -1) { return; }
+    shown++;
+    container.appendChild(pinCard(pin, 0));
+  });
+  $("search-empty").classList.toggle("hidden", shown !== 0);
+}
+function renderSavedGrid() {
+  var container = $("saved-grid");
+  if (!container) { return; }
+  container.innerHTML = "";
+  var shown = 0;
+  pins.forEach(function(pin) {
+    if (!savedIds.has(pin.id)) { return; }
+    shown++;
+    container.appendChild(pinCard(pin, 0));
+  });
+  $("saved-empty").classList.toggle("hidden", shown !== 0);
 }
 function openSheet(id) { $(id).classList.remove("hidden"); if (id !== "board-sheet") { $("sheet-overlay").classList.remove("hidden"); } else { $("sheet-overlay").classList.remove("hidden"); } }
 function closeSheets() { $("plus-sheet").classList.add("hidden"); $("board-sheet").classList.add("hidden"); $("sheet-overlay").classList.add("hidden"); }
@@ -146,11 +194,32 @@ async function loadFeed() {
 }
 // First paint happens in gate() at the end of this file (public feed first, no login needed).
 
-$("search").addEventListener("input", function() { currentSearch = $("search").value.trim().toLowerCase(); renderFeed(); });
-$("search-button").addEventListener("click", function() { currentSearch = $("search").value.trim().toLowerCase(); loadFeed(); });
+$("search").addEventListener("input", function() { currentSearch = $("search").value.trim().toLowerCase(); renderFeed(); renderSearchGrid(); });
+$("search-button").addEventListener("click", function() { currentSearch = $("search").value.trim().toLowerCase(); loadFeed(); renderSearchGrid(); });
 document.querySelectorAll("#filters button").forEach(function(btn) {
-  btn.addEventListener("click", function() { currentCategory = btn.dataset.category; renderFeed(); });
+  btn.addEventListener("click", function() { currentCategory = btn.dataset.category; renderFeed(); renderSearchGrid(); });
 });
+
+// ---------- Bottom nav (Instagram-style) + top bar ----------
+document.querySelectorAll("#bottom-nav button[data-view]").forEach(function(btn) {
+  btn.addEventListener("click", function() {
+    var view = btn.dataset.view;
+    if (view === "profile-view" && !currentUser) { showView("auth-view"); showToast("Log in to see your profile."); return; }
+    if (view === "profile-view") { renderProfile(); }
+    showView(view);
+  });
+});
+$("nav-create").addEventListener("click", function() { $("plus-button").click(); });
+$("notifications-button").addEventListener("click", function() { showView("notifications-view"); });
+$("dark-mode-button").addEventListener("click", function() {
+  document.body.classList.toggle("dark-mode");
+  localStorage.setItem("pinboard-dark-mode", document.body.classList.contains("dark-mode") ? "on" : "off");
+  $("dark-mode-button").textContent = document.body.classList.contains("dark-mode") ? "☀️" : "🌙";
+});
+if (localStorage.getItem("pinboard-dark-mode") === "on") {
+  document.body.classList.add("dark-mode");
+  $("dark-mode-button").textContent = "☀️";
+}
 
 // ---------- Plus menu ----------
 $("plus-button").addEventListener("click", function() {
@@ -456,6 +525,7 @@ function publishPin() {
         if (ins.error) { throw new Error(ins.error.message); }
         var pin = dbToPin(ins.data);
         pins.unshift(pin); saveCache();
+        logActivity("You published " + pin.title);
         publishing = false; $("publish-btn").disabled = false; $("publish-btn").textContent = "Publish";
         renderFeed(); currentPinId = pin.id;
         $("pin-published-msg").classList.remove("hidden");
@@ -523,7 +593,7 @@ $("pin-share").addEventListener("click", function() {
 });
 $("pin-save-toggle").addEventListener("click", function() {
   var pin = pins.find(function(p) { return p.id === currentPinId; }); if (!pin) { return; }
-  if (savedIds.has(pin.id)) { savedIds.delete(pin.id); } else { savedIds.add(pin.id); }
+  if (savedIds.has(pin.id)) { savedIds.delete(pin.id); } else { savedIds.add(pin.id); logActivity("You saved " + pin.title); }
   saveSavedIds(); pin.saved = savedIds.has(pin.id); renderPinView(); showToast(pin.saved ? "Saved." : "Unsaved.");
 });
 $("pin-delete").addEventListener("click", async function() {
