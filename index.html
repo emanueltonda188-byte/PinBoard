@@ -32,9 +32,22 @@
       </span>
     </div>
 
-    <main id="grid"></main>
+    <p class="muted">Swipe ← on your phone for the 16:9 page. On a computer, both are side by side — just scroll down.</p>
+    <div id="feed-pager">
+      <button type="button" data-page="0" class="active">9:16</button>
+      <button type="button" data-page="1">16:9</button>
+    </div>
 
-    <main id="grid-landscape"></main>
+    <div id="feed-layout">
+      <section class="feed-page feed-page-vertical">
+        <h2>9:16 • Vertical</h2>
+        <main id="grid"></main>
+      </section>
+      <section class="feed-page feed-page-landscape">
+        <h2>16:9 • Landscape</h2>
+        <main id="grid-landscape"></main>
+      </section>
+    </div>
 
     <p id="feed-empty" class="empty hidden">No pins yet. Tap + to create your first pin.</p>
     <p id="feed-error" class="error hidden"></p>

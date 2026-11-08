@@ -200,6 +200,27 @@ document.querySelectorAll("#filters button").forEach(function(btn) {
   btn.addEventListener("click", function() { currentCategory = btn.dataset.category; renderFeed(); renderSearchGrid(); });
 });
 
+// ---------- Home feed pager: phone = swipe left between 2 pages, PC = 2 columns ----------
+(function() {
+  var layout = $("feed-layout");
+  if (!layout) { return; }
+  var buttons = document.querySelectorAll("#feed-pager button");
+  function setActive(index) {
+    buttons.forEach(function(btn, i) { btn.classList.toggle("active", i === index); });
+  }
+  buttons.forEach(function(btn) {
+    btn.addEventListener("click", function() {
+      var index = Number(btn.dataset.page) || 0;
+      layout.scrollTo({ left: index * layout.clientWidth, behavior: "smooth" });
+      setActive(index);
+    });
+  });
+  layout.addEventListener("scroll", function() {
+    var index = layout.clientWidth ? Math.round(layout.scrollLeft / layout.clientWidth) : 0;
+    setActive(index);
+  }, { passive: true });
+})();
+
 // ---------- Bottom nav (Instagram-style) + top bar ----------
 document.querySelectorAll("#bottom-nav button[data-view]").forEach(function(btn) {
   btn.addEventListener("click", function() {
