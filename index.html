@@ -27,8 +27,6 @@
       <span id="profile-bar-logged-in" class="hidden">
         <span id="profile-avatar" class="avatar">?</span>
         <span id="profile-greeting" class="muted">Hi!</span>
-        <button id="profile-open" type="button" class="secondary-btn small-btn">Profile</button>
-        <button id="logout-btn" type="button" class="secondary-btn small-btn">Log out</button>
       </span>
     </div>
 
@@ -40,11 +38,9 @@
 
     <div id="feed-layout">
       <section class="feed-page feed-page-vertical">
-        <h2>9:16 • Vertical</h2>
         <main id="grid"></main>
       </section>
       <section class="feed-page feed-page-landscape">
-        <h2>16:9 • Landscape</h2>
         <main id="grid-landscape"></main>
       </section>
     </div>
@@ -372,6 +368,7 @@
       <label>Display name <input id="profile-edit-name" /></label>
       <button id="profile-save-name" type="button">Save name</button>
       <label class="check-row"><input type="checkbox" id="notifications-toggle" /> Notifications</label>
+      <button id="logout-btn" type="button" class="secondary-btn">Log out</button>
       <p class="muted">Accounts are managed in Supabase — there is no self-delete button here.</p>
     </div>
   </div>

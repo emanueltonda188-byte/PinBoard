@@ -1084,7 +1084,7 @@ function renderProfile() {
   $("profile-edit-name").value = displayName(u);
   $("notifications-toggle").checked = localStorage.getItem("pinboard-notifications") !== "off";
 }
-$("profile-open").addEventListener("click", function() { renderProfile(); showView("profile-view"); });
+if ($("profile-open")) { $("profile-open").addEventListener("click", function() { renderProfile(); showView("profile-view"); }); }
 $("profile-back").addEventListener("click", function() { showView("feed-view"); renderFeed(); });
 $("login-open-btn").addEventListener("click", function() { setAuthTab("login"); showView("auth-view"); });
 $("logout-btn").addEventListener("click", async function() {
