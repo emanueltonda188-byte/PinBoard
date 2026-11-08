@@ -6,6 +6,16 @@ const SUPABASE_URL = "https://baucxuimppcajcafdsqx.supabase.co";
 const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJhdWN4dWltcHBjYWpjYWZkc3F4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTMzMDU5MzMsImV4cCI6MjEwODg4MTkzM30.RFUIyH8tSGoQodpCEdijiisXJniUwsZYpmUF_KI-u9k";
 var sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
+// ---------- Discover: free photo keys (paste YOUR OWN keys here, nothing else) ----------
+// Openverse needs NO key and works out of the box — the app runs fully on it.
+// Unsplash (optional): make a free app at https://unsplash.com/developers
+//   and paste its Access Key below. Leave it "" and Unsplash is simply skipped.
+// Pixabay (optional): sign up at https://pixabay.com/api/docs/
+//   and paste the key from your dashboard below. Leave it "" and Pixabay is skipped.
+// NEVER paste a real key into a shared screenshot, and never commit a real key.
+var UNSPLASH_ACCESS_KEY = "";
+var PIXABAY_API_KEY = "";
+
 function $(id) { return document.getElementById(id); }
 // Pins/boards come from Supabase (see loadFeed). These helpers only handle the offline cache + saved ids.
 function loadCache() { try { return JSON.parse(localStorage.getItem("pins-cache") || "[]"); } catch (e) { return []; } }
@@ -52,6 +62,15 @@ var currentPinId = null;
 var boardSheetMode = "select"; // select | create | change-board
 var publishing = false;
 var draftToRetry = null;
+// Likes: pin id -> number of likes; myLikes = pin ids the logged-in user liked.
+var likeCounts = {};
+var myLikes = new Set();
+// Discover: free-photo results from Openverse / Unsplash / Pixabay.
+var discoverResults = [];
+var discoverQuery = "rooms";
+var discoverSource = "openverse";
+var discoverFilling = false;
+var discoverSearched = false;
 
 function newEditor() { return { aspect: "original", rotation: 0, text: "", position: "center", color: "#ffffff", size: 24, filter: "none", brightness: 100, contrast: 100, saturation: 100 }; }
 function selectedMedia() { return mediaItems.filter(function(m) { return m.selected; }); }
@@ -59,7 +78,7 @@ function boardById(id) { return boards.find(function(b) { return b.id === id; })
 function boardCount(id) { return pins.filter(function(p) { return p.boardId === id; }).length; }
 
 function showView(viewId) {
-  ["feed-view", "create-view", "pin-view", "auth-view", "profile-view", "search-view", "saved-view", "notifications-view"].forEach(function(id) { $(id).classList.toggle("active", id === viewId); });
+  ["feed-view", "create-view", "pin-view", "auth-view", "profile-view", "search-view", "saved-view", "notifications-view", "discover-view"].forEach(function(id) { $(id).classList.toggle("active", id === viewId); });
   $("plus-button").classList.toggle("hidden", viewId === "auth-view");
   var nav = $("bottom-nav");
   if (nav) { nav.classList.toggle("hidden", viewId === "auth-view"); }
@@ -71,6 +90,7 @@ function showView(viewId) {
   if (viewId === "search-view") { renderSearchGrid(); }
   if (viewId === "saved-view") { renderSavedGrid(); }
   if (viewId === "notifications-view") { renderActivity(); }
+  if (viewId === "discover-view") { renderDiscover(); }
 }
 function logActivity(text) {
   try {
@@ -132,12 +152,26 @@ function pinCard(pin, index) {
     mediaHtml = firstType === "video" ? '<video src="' + first + '" controls muted></video>' : '<img src="' + first + '" alt="Pin photo">';
   }
   var own = currentUser && pin.user_id === currentUser.id;
+  var liked = myLikes.has(pin.id);
+  var likeCount = likeCounts[pin.id] || 0;
   card.innerHTML = mediaHtml + "<h3>" + escapeHtml(pin.title) + "</h3><p>" + escapeHtml(pin.category || "") + "</p>" +
     "<p class=\"muted\">by " + escapeHtml(pin.author_name || "PinBoard") + "</p>" +
     (pin.link ? '<p><a href="' + escapeHtml(pin.link) + '" target="_blank">Open link ↗</a></p>' : "") +
-    (own ? "<button type=\"button\">Delete</button>" : "");
+    // Like / download / Pinterest buttons. Clicking a button does NOT open the pin
+    // (the card click handler below ignores BUTTON and A clicks).
+    '<div class="pin-actions">' +
+      '<button type="button" data-action="like" class="' + (liked ? "liked" : "") + '">' + (liked ? "❤️ " : "🤍 ") + likeCount + '</button>' +
+      '<button type="button" data-action="download">⬇️ Download</button>' +
+      '<button type="button" data-action="pinterest">📌 Pinterest</button>' +
+    "</div>" +
+    (own ? "<button type=\"button\" data-action=\"delete\">Delete</button>" : "");
   card.addEventListener("click", function(e) { if (e.target.tagName !== "BUTTON" && e.target.tagName !== "A") { openPin(pin.id); } });
-  var delBtn = card.querySelector("button");
+  // Wire the buttons on this card (stopPropagation is not needed: the card
+  // handler above already ignores button clicks).
+  card.querySelector('[data-action="like"]').addEventListener("click", function() { toggleLike(pin.id, this); });
+  card.querySelector('[data-action="download"]').addEventListener("click", function() { downloadPin(pin); });
+  card.querySelector('[data-action="pinterest"]').addEventListener("click", function() { shareToPinterest(pin); });
+  var delBtn = card.querySelector('[data-action="delete"]');
   if (delBtn) {
     delBtn.addEventListener("click", async function(e) {
       e.stopPropagation();
@@ -190,6 +224,7 @@ async function loadFeed() {
     fe.textContent = "Could not load fresh pins — showing saved ones. Check your connection and tap Search to retry.";
     fe.classList.remove("hidden");
   }
+  await loadLikes();
   renderFeed();
 }
 // First paint happens in gate() at the end of this file (public feed first, no login needed).
@@ -584,6 +619,8 @@ function renderPinView() {
   $("pin-edit").style.display = own ? "" : "none";
   $("pin-change-board").style.display = own ? "" : "none";
   $("pin-delete").style.display = own ? "" : "none";
+  updatePinLikeButton(pin);
+  loadPinComments(pin);
 }
 function openPin(id) { currentPinId = id; $("pin-published-msg").classList.add("hidden"); $("pin-edit-form").classList.add("hidden"); renderPinView(); showView("pin-view"); }
 $("pin-back").addEventListener("click", function() { showView("feed-view"); renderFeed(); });
@@ -623,10 +660,339 @@ $("pin-delete").addEventListener("click", async function() {
   if (del.error) { showToast("Could not delete: " + del.error.message); return; }
   pins = pins.filter(function(p) { return p.id !== currentPinId; }); saveCache(); renderFeed(); showView("feed-view");
 });
+$("pin-like").addEventListener("click", function() {
+  var pin = pins.find(function(p) { return p.id === currentPinId; });
+  if (pin) { toggleLike(pin.id, null); }
+});
+$("pin-download").addEventListener("click", function() {
+  var pin = pins.find(function(p) { return p.id === currentPinId; });
+  if (pin) { downloadPin(pin); }
+});
+$("pin-pinterest").addEventListener("click", function() {
+  var pin = pins.find(function(p) { return p.id === currentPinId; });
+  if (pin) { shareToPinterest(pin); }
+});
+$("pin-comment-add").addEventListener("click", postComment);
+$("pin-comment-input").addEventListener("keydown", function(e) { if (e.key === "Enter") { postComment(); } });
 $("pin-open-link").addEventListener("click", function() {
   var pin = pins.find(function(p) { return p.id === currentPinId; });
   if (pin && pin.link) { window.open(pin.link, "_blank"); }
 });
+
+// ---------- Discover controls (search box, topic chips, source, fill button) ----------
+$("discover-search-button").addEventListener("click", function() {
+  var q = $("discover-search").value.trim();
+  if (q) { discoverQuery = q; }
+  searchDiscover(discoverQuery, $("discover-source").value);
+});
+$("discover-search").addEventListener("keydown", function(e) {
+  if (e.key === "Enter") { $("discover-search-button").click(); }
+});
+$("discover-source").addEventListener("change", function() {
+  searchDiscover(discoverQuery, $("discover-source").value);
+});
+document.querySelectorAll("#discover-chips .chip").forEach(function(c) {
+  c.addEventListener("click", function() {
+    document.querySelectorAll("#discover-chips .chip").forEach(function(x) { x.classList.remove("active"); });
+    c.classList.add("active");
+    discoverQuery = c.dataset.topic;
+    $("discover-search").value = discoverQuery;
+    searchDiscover(discoverQuery, $("discover-source").value);
+  });
+});
+$("discover-fill-btn").addEventListener("click", fillFeedFromDiscover);
+
+// ---------- Likes (Supabase "likes" table: one row per person per pin) ----------
+// If the likes table does not exist yet (SQL not run), counts just stay at 0.
+async function loadLikes() {
+  likeCounts = {};
+  myLikes = new Set();
+  if (!pins.length) { return; }
+  try {
+    var res = await sb.from("likes").select("pin_id,user_id").in("pin_id", pins.map(function(p) { return p.id; }));
+    if (res.error || !Array.isArray(res.data)) { return; }
+    res.data.forEach(function(row) {
+      likeCounts[row.pin_id] = (likeCounts[row.pin_id] || 0) + 1;
+      if (currentUser && row.user_id === currentUser.id) { myLikes.add(row.pin_id); }
+    });
+  } catch (e) { /* likes table missing — feed still works, counts stay 0 */ }
+}
+function updatePinLikeButton(pin) {
+  var btn = $("pin-like");
+  if (!btn) { return; }
+  var liked = myLikes.has(pin.id);
+  var count = likeCounts[pin.id] || 0;
+  btn.textContent = (liked ? "❤️ Liked " : "🤍 Like ") + (count ? "(" + count + ")" : "");
+}
+async function toggleLike(pinId, btn) {
+  // Login first: likes belong to a real account, not to a device.
+  if (!currentUser) { showView("auth-view"); showToast("Log in to like pins."); return; }
+  var liked = myLikes.has(pinId);
+  // Update the button right away, undo it if Supabase says no.
+  if (liked) { myLikes.delete(pinId); likeCounts[pinId] = Math.max(0, (likeCounts[pinId] || 1) - 1); }
+  else { myLikes.add(pinId); likeCounts[pinId] = (likeCounts[pinId] || 0) + 1; }
+  var pin = pins.find(function(p) { return p.id === pinId; });
+  if (btn) { btn.textContent = (myLikes.has(pinId) ? "❤️ " : "🤍 ") + (likeCounts[pinId] || 0); btn.classList.toggle("liked", myLikes.has(pinId)); }
+  if (pin) { updatePinLikeButton(pin); }
+  var res;
+  if (liked) { res = await sb.from("likes").delete().eq("pin_id", pinId).eq("user_id", currentUser.id); }
+  else { res = await sb.from("likes").insert({ pin_id: pinId, user_id: currentUser.id }); }
+  if (res.error) {
+    // Undo the quick update above.
+    if (liked) { myLikes.add(pinId); likeCounts[pinId] = (likeCounts[pinId] || 0) + 1; }
+    else { myLikes.delete(pinId); likeCounts[pinId] = Math.max(0, (likeCounts[pinId] || 1) - 1); }
+    if (btn) { btn.textContent = (myLikes.has(pinId) ? "❤️ " : "🤍 ") + (likeCounts[pinId] || 0); btn.classList.toggle("liked", myLikes.has(pinId)); }
+    if (pin) { updatePinLikeButton(pin); }
+    showToast("Could not save that like: " + res.error.message);
+  }
+}
+
+// ---------- Download a pin (real file download, with a long-press fallback) ----------
+function pinImageUrl(pin) {
+  if (pin.image) { return pin.image; }
+  if (pin.media && pin.media[0]) { return pin.media[0].url; }
+  return "";
+}
+function pinFileName(pin) {
+  var url = pinImageUrl(pin);
+  var ext = ".jpg";
+  if (/\.png(\?|$)/i.test(url)) { ext = ".png"; }
+  if (/\.webp(\?|$)/i.test(url)) { ext = ".webp"; }
+  return "pinboard-" + String(pin.id).slice(0, 8) + ext;
+}
+async function downloadPin(pin) {
+  var url = pinImageUrl(pin);
+  if (!url) { showToast("This pin has no image to download."); return; }
+  if (pin.media && pin.media[0] && pin.media[0].type === "video") {
+    window.open(url, "_blank");
+    showToast("Videos open in a new tab — long-press to save.");
+    return;
+  }
+  try {
+    // Fetch the photo, turn it into a file, and trigger a real download.
+    var res = await fetch(url, { mode: "cors" });
+    if (!res.ok) { throw new Error("Photo could not be fetched."); }
+    var blob = await res.blob();
+    var objectUrl = URL.createObjectURL(blob);
+    var a = document.createElement("a");
+    a.href = objectUrl; a.download = pinFileName(pin);
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(function() { URL.revokeObjectURL(objectUrl); }, 5000);
+    showToast("Saved — check your downloads.");
+  } catch (e) {
+    // Some photo hosts block direct fetching. Open the photo instead so the
+    // user can long-press it and save it by hand.
+    window.open(url, "_blank");
+    showToast("Download was blocked — long-press the photo to save it.");
+  }
+}
+
+// ---------- Share to Pinterest (your OWN pins only, you pick the board there) ----------
+// No Pinterest API, no auto-posting, no login: this just opens Pinterest's
+// own "create a pin" page with your photo already filled in. You choose
+// the board on Pinterest and tap Save there.
+function shareToPinterest(pin) {
+  var url = pinImageUrl(pin);
+  if (!url) { showToast("This pin has no image to share."); return; }
+  var pageUrl = window.location.href.split("#")[0] + "#pin-" + pin.id;
+  var shareUrl = "https://pinterest.com/pin/create/button/?url=" + encodeURIComponent(pageUrl) +
+    "&media=" + encodeURIComponent(url) +
+    "&description=" + encodeURIComponent(pin.title || "PinBoard");
+  window.open(shareUrl, "_blank");
+}
+
+// ---------- Comments (Supabase "comments" table, newest first) ----------
+async function loadPinComments(pin) {
+  var list = $("pin-comments-list");
+  var note = $("pin-comments-note");
+  var input = $("pin-comment-input");
+  var addBtn = $("pin-comment-add");
+  if (!list) { return; }
+  list.innerHTML = "";
+  note.classList.add("hidden");
+  // The pin owner can switch comments off for a pin.
+  if (pin.commentsAllowed === false) {
+    note.textContent = "Comments are turned off for this pin.";
+    note.classList.remove("hidden");
+    input.disabled = true; addBtn.disabled = true;
+    return;
+  }
+  input.disabled = false; addBtn.disabled = false;
+  if (!currentUser) { note.textContent = "Log in to write a comment."; note.classList.remove("hidden"); }
+  try {
+    var res = await sb.from("comments").select("*").eq("pin_id", pin.id).order("created_at", { ascending: false });
+    if (res.error) { throw res.error; }
+    var rows = res.data || [];
+    if (!rows.length) { list.innerHTML = '<p class="muted">No comments yet — be the first.</p>'; return; }
+    rows.forEach(function(c) {
+      var item = document.createElement("div");
+      item.className = "comment-item";
+      var when = c.created_at ? new Date(c.created_at).toLocaleString() : "";
+      var own = currentUser && c.user_id === currentUser.id;
+      item.innerHTML = "<strong>" + escapeHtml(c.author_name || "PinBoard") + "</strong> <span class=\"muted\">" + escapeHtml(when) + "</span><p>" + escapeHtml(c.body || "") + "</p>" +
+        (own ? '<button type="button" class="secondary-btn">Delete</button>' : "");
+      var del = item.querySelector("button");
+      if (del) {
+        del.addEventListener("click", async function() {
+          if (!window.confirm("Delete this comment?")) { return; }
+          var r = await sb.from("comments").delete().eq("id", c.id).eq("user_id", currentUser.id);
+          if (r.error) { showToast("Could not delete: " + r.error.message); return; }
+          loadPinComments(pin);
+        });
+      }
+      list.appendChild(item);
+    });
+  } catch (e) {
+    // The comments table does not exist yet (new SQL not run) — say so plainly.
+    list.innerHTML = '<p class="muted">Comments are not set up yet — run the new likes + comments SQL in Supabase, then reload.</p>';
+  }
+}
+async function postComment() {
+  var pin = pins.find(function(p) { return p.id === currentPinId; });
+  if (!pin) { return; }
+  if (!currentUser) { showView("auth-view"); showToast("Log in to write a comment."); return; }
+  var body = $("pin-comment-input").value.trim();
+  if (!body) { showToast("Write something first."); return; }
+  var res = await sb.from("comments").insert({ pin_id: pin.id, user_id: currentUser.id, author_name: displayName(currentUser), body: body });
+  if (res.error) { showToast("Could not post: " + res.error.message); return; }
+  $("pin-comment-input").value = "";
+  loadPinComments(pin);
+}
+
+// ---------- Discover: free photos (Openverse first, no key needed) ----------
+// Openverse: https://api.openverse.org/v1/images/?q=rooms — free, no key.
+// Unsplash and Pixabay only run when their key above is filled in; otherwise
+// they are skipped quietly and Openverse results are shown instead.
+function discoverCategoryFor(topic) {
+  if (topic === "rooms") { return "Room"; }
+  if (topic === "cars") { return "Car"; }
+  if (topic === "fashion") { return "Item"; }
+  return "Other";
+}
+function discoverBoardFor() {
+  // Discover pins need a board. Use "Cool finds" (a public seed board) if it
+  // is there, otherwise the first board, otherwise no board at all.
+  return boards.find(function(b) { return b.name === "Cool finds"; }) || boards[0] || null;
+}
+async function searchDiscover(query, source) {
+  discoverQuery = query || discoverQuery;
+  discoverSource = source || discoverSource;
+  var q = encodeURIComponent(discoverQuery);
+  var err = $("discover-error"); err.classList.add("hidden");
+  var grid = $("discover-grid"); grid.innerHTML = "";
+  $("discover-note").textContent = "Searching " + discoverSource + " for “" + discoverQuery + "”…";
+  try {
+    var results = [];
+    if (discoverSource === "unsplash") {
+      if (!UNSPLASH_ACCESS_KEY) { showToast("Add your Unsplash key at the top of app.js first — showing Openverse instead."); discoverSource = "openverse"; $("discover-source").value = "openverse"; }
+      else {
+        var u = await fetch("https://api.unsplash.com/search/photos?query=" + q + "&per_page=20", { headers: { Authorization: "Client-ID " + UNSPLASH_ACCESS_KEY } });
+        if (!u.ok) { throw new Error("Unsplash said no (check the key)."); }
+        var ud = await u.json();
+        results = (ud.results || []).map(function(r) {
+          return { title: r.alt_description || r.description || "Unsplash photo", image: r.urls.regular, credit: "Photo by " + (r.user && r.user.name ? r.user.name : "Unknown") + " on Unsplash", sourceUrl: (r.links && r.links.html) || "https://unsplash.com", sourceName: "Unsplash" };
+        });
+      }
+    }
+    if (discoverSource === "pixabay") {
+      if (!PIXABAY_API_KEY) { showToast("Add your Pixabay key at the top of app.js first — showing Openverse instead."); discoverSource = "openverse"; $("discover-source").value = "openverse"; }
+      else {
+        var p = await fetch("https://pixabay.com/api/?key=" + encodeURIComponent(PIXABAY_API_KEY) + "&q=" + q + "&image_type=photo&per_page=20&safesearch=true");
+        if (!p.ok) { throw new Error("Pixabay said no (check the key)."); }
+        var pd = await p.json();
+        results = (pd.hits || []).map(function(r) {
+          return { title: (r.tags || "Pixabay photo").split(",")[0].trim() || "Pixabay photo", image: r.largeImageURL || r.webformatURL, credit: "Photo by " + (r.user || "Unknown") + " on Pixabay", sourceUrl: r.pageURL || "https://pixabay.com", sourceName: "Pixabay" };
+        });
+      }
+    }
+    if (discoverSource === "openverse") {
+      var o = await fetch("https://api.openverse.org/v1/images/?q=" + q + "&page_size=20&license_type=commercial");
+      if (!o.ok) { throw new Error("Openverse could not be reached."); }
+      var od = await o.json();
+      results = (od.results || []).map(function(r) {
+        return { title: r.title || "Free photo", image: r.url, credit: "Photo by " + (r.creator || "Unknown") + " on Openverse", sourceUrl: r.foreign_landing_url || r.url, sourceName: "Openverse" };
+      });
+    }
+    discoverResults = results.filter(function(r) { return r.image; });
+    $("discover-note").textContent = "Source: " + discoverSource + " — " + discoverResults.length + " photos. Tap “Save as pin” on any photo, or fill your feed with 10 at once.";
+    renderDiscover();
+  } catch (e) {
+    err.textContent = "Discover search failed: " + e.message + " Check your connection and try again.";
+    err.classList.remove("hidden");
+    $("discover-note").textContent = "Source: " + discoverSource + ".";
+  }
+}
+function renderDiscover() {
+  var grid = $("discover-grid");
+  if (!grid) { return; }
+  grid.innerHTML = "";
+  discoverResults.forEach(function(r) {
+    var card = document.createElement("div");
+    card.innerHTML = '<img src="' + escapeHtml(r.image) + '" alt="Free photo" loading="lazy">' +
+      "<h3>" + escapeHtml(r.title) + "</h3>" +
+      '<p class="muted">' + escapeHtml(r.credit) + "</p>" +
+      '<button type="button" class="discover-save">📌 Save as pin</button>';
+    card.querySelector(".discover-save").addEventListener("click", function() { saveDiscoverPin(r, this); });
+    grid.appendChild(card);
+  });
+  $("discover-empty").classList.toggle("hidden", discoverResults.length !== 0);
+  // First visit: search for something so the page is never empty.
+  if (!discoverResults.length && !discoverSearched) {
+    discoverSearched = true;
+    searchDiscover(discoverQuery, discoverSource);
+  }
+}
+async function saveDiscoverPin(r, btn) {
+  // Discover pins go online under your name, like any pin you post.
+  if (!currentUser) { showView("auth-view"); showToast("Sign up or log in first, then save photos as pins."); return; }
+  if (btn) { btn.disabled = true; btn.textContent = "Saving…"; }
+  try {
+    var board = discoverBoardFor();
+    var pinData = {
+      title: r.title, description: r.credit + " — " + r.sourceUrl, link: r.sourceUrl,
+      category: discoverCategoryFor(discoverQuery), topics: [discoverCategoryFor(discoverQuery)],
+      boardId: board ? board.id : null, board_private: board ? !!board.private : false,
+      image: r.image, media: [{ type: "image", url: r.image }],
+      layout: "single", product: null, commentsAllowed: true
+    };
+    var ins = await sb.from("pins").insert(pinToDb(pinData, currentUser)).select().single();
+    if (ins.error) { throw new Error(ins.error.message); }
+    pins.unshift(dbToPin(ins.data)); saveCache(); renderFeed();
+    showToast("Saved as a pin — it is live on your feed.");
+  } catch (e) {
+    showToast("Could not save that pin: " + e.message);
+  }
+  if (btn) { btn.disabled = false; btn.textContent = "📌 Save as pin"; }
+}
+async function fillFeedFromDiscover() {
+  if (discoverFilling) { return; }
+  if (!currentUser) { showView("auth-view"); showToast("Sign up or log in first, then fill your feed."); return; }
+  if (!discoverResults.length) { await searchDiscover(discoverQuery, discoverSource); }
+  var take = discoverResults.slice(0, 10);
+  if (!take.length) { showToast("No photos to save yet — search first."); return; }
+  discoverFilling = true;
+  var btn = $("discover-fill-btn"); btn.disabled = true; btn.textContent = "Filling your feed…";
+  var added = 0;
+  for (var i = 0; i < take.length; i++) {
+    btn.textContent = "Filling your feed… " + added + "/" + take.length;
+    try {
+      var board = discoverBoardFor();
+      var pinData = {
+        title: take[i].title, description: take[i].credit + " — " + take[i].sourceUrl, link: take[i].sourceUrl,
+        category: discoverCategoryFor(discoverQuery), topics: [discoverCategoryFor(discoverQuery)],
+        boardId: board ? board.id : null, board_private: board ? !!board.private : false,
+        image: take[i].image, media: [{ type: "image", url: take[i].image }],
+        layout: "single", product: null, commentsAllowed: true
+      };
+      var ins = await sb.from("pins").insert(pinToDb(pinData, currentUser)).select().single();
+      if (!ins.error) { pins.unshift(dbToPin(ins.data)); added++; }
+    } catch (e) { /* keep going with the next photo */ }
+  }
+  saveCache(); renderFeed();
+  discoverFilling = false;
+  btn.disabled = false; btn.textContent = "✨ Fill my feed — 10 fresh pins";
+  showToast(added ? "Added " + added + " fresh pins to your feed!" : "Nothing was added — check your connection and try again.");
+}
 
 // ---------- Real accounts (Supabase Auth) ----------
 // Anyone can view the feed. Posting needs an account. The old device-only

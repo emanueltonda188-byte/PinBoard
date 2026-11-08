@@ -41,7 +41,7 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
 .top-bar h1 { font-size: 28px; margin: 0; }
 .top-bar .icon-btn { background: rgba(255,255,255,0.6); }
 #bottom-nav { position: fixed; bottom: 0; left: 0; right: 0; display: flex; justify-content: space-around; align-items: center; background: rgba(255,255,255,0.9); backdrop-filter: blur(16px); border-top: 1px solid rgba(0,0,0,0.08); padding: 10px 8px; z-index: 150; }
-#bottom-nav button { background: transparent; color: #374151; padding: 8px 10px; font-size: 13px; border-radius: 12px; }
+#bottom-nav button { background: transparent; color: #374151; padding: 8px 6px; font-size: 12px; border-radius: 12px; }
 #bottom-nav button.active { color: #c2410c; }
 #nav-create { background: #c2410c !important; color: white !important; width: 52px; height: 52px; border-radius: 50% !important; font-size: 28px !important; display: flex; align-items: center; justify-content: center; margin-top: -24px; box-shadow: 0 12px 32px rgba(0,0,0,0.25); padding: 0 !important; }
 /* Home feed: 2 columns on PC (16:9 left, 9:16 right), 2 swipe pages on phone (9:16 first, swipe left for 16:9) */
@@ -61,17 +61,17 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
   .feed-page-landscape { order: 2; }
   #grid, #grid-landscape { grid-template-columns: 1fr; }
 }
-#search-grid, #saved-grid { max-width: 1100px; margin: 0 auto 32px; display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 20px; text-align: left; }
-#search-grid > div, #saved-grid > div { position: relative; background: rgba(255,255,255,0.6); backdrop-filter: blur(16px) saturate(180%); border: 1px solid rgba(255,255,255,0.7); border-radius: 24px; box-shadow: 0 12px 32px rgba(0,0,0,0.12); overflow: hidden; padding-bottom: 14px; cursor: pointer; }
-#search-grid img, #saved-grid img, #search-grid video, #saved-grid video { width: 100%; object-fit: cover; display: block; aspect-ratio: 9 / 16; }
-#search-grid h3, #search-grid p, #saved-grid h3, #saved-grid p { padding: 0 16px; margin: 10px 0; }
-#search-grid a, #saved-grid a { color: #c2410c; font-weight: 600; text-decoration: none; }
-#search-grid button, #saved-grid button { background: rgba(255,255,255,0.9); color: #374151; border: 1px solid rgba(0,0,0,0.1); margin: 8px 16px 0; padding: 8px 14px; font-size: 14px; }
+#search-grid, #saved-grid, #discover-grid { max-width: 1100px; margin: 0 auto 32px; display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 20px; text-align: left; }
+#search-grid > div, #saved-grid > div, #discover-grid > div { position: relative; background: rgba(255,255,255,0.6); backdrop-filter: blur(16px) saturate(180%); border: 1px solid rgba(255,255,255,0.7); border-radius: 24px; box-shadow: 0 12px 32px rgba(0,0,0,0.12); overflow: hidden; padding-bottom: 14px; cursor: pointer; }
+#search-grid img, #saved-grid img, #discover-grid img, #search-grid video, #saved-grid video, #discover-grid video { width: 100%; object-fit: cover; display: block; aspect-ratio: 9 / 16; }
+#search-grid h3, #search-grid p, #saved-grid h3, #saved-grid p, #discover-grid h3, #discover-grid p { padding: 0 16px; margin: 10px 0; }
+#search-grid a, #saved-grid a, #discover-grid a { color: #c2410c; font-weight: 600; text-decoration: none; }
+#search-grid button, #saved-grid button, #discover-grid button { background: rgba(255,255,255,0.9); color: #374151; border: 1px solid rgba(0,0,0,0.1); margin: 8px 16px 0; padding: 8px 14px; font-size: 14px; }
 #activity-list { max-width: 640px; margin: 0 auto; display: grid; gap: 10px; text-align: left; }
 #activity-list div { background: rgba(255,255,255,0.6); border: 1px solid rgba(255,255,255,0.7); border-radius: 16px; padding: 12px 16px; }
 body.dark-mode { background: linear-gradient(135deg, #0f172a, #1e293b, #312e81); color: #f1f5f9; }
 body.dark-mode input, body.dark-mode select, body.dark-mode textarea { background: rgba(30,41,59,0.9); color: #f1f5f9; border-color: rgba(255,255,255,0.15); }
-body.dark-mode .step, body.dark-mode .auth-card, body.dark-mode .profile-card, body.dark-mode #pin-content, body.dark-mode #grid > div, body.dark-mode #grid-landscape > div, body.dark-mode #search-grid > div, body.dark-mode #saved-grid > div, body.dark-mode #activity-list div { background: rgba(30,41,59,0.7); border-color: rgba(255,255,255,0.1); color: #f1f5f9; }
+body.dark-mode .step, body.dark-mode .auth-card, body.dark-mode .profile-card, body.dark-mode #pin-content, body.dark-mode #grid > div, body.dark-mode #grid-landscape > div, body.dark-mode #search-grid > div, body.dark-mode #saved-grid > div, body.dark-mode #discover-grid > div, body.dark-mode #activity-list div, body.dark-mode .comment-item { background: rgba(30,41,59,0.7); border-color: rgba(255,255,255,0.1); color: #f1f5f9; }
 body.dark-mode #bottom-nav { background: rgba(15,23,42,0.9); }
 body.dark-mode #bottom-nav button { color: #cbd5e1; }
 body.dark-mode #bottom-nav button.active { color: #fb923c; }
@@ -127,6 +127,20 @@ body.dark-mode .top-bar .icon-btn { background: rgba(30,41,59,0.9); color: white
   .plus-button { width: 72px; height: 72px; font-size: 44px; }
   body { padding-bottom: 140px; }
 }
+
+/* Pin action buttons (like / download / Pinterest) on feed cards */
+.pin-actions { display: flex; gap: 6px; flex-wrap: wrap; padding: 0 16px; margin-top: 4px; }
+.pin-actions button { margin: 6px 0 0 !important; padding: 6px 10px !important; font-size: 13px !important; border-radius: 999px !important; }
+.pin-actions button.liked { background: #fee2e2 !important; border-color: #fca5a5 !important; color: #b91c1c !important; }
+
+/* Discover results + comments */
+#discover-grid .discover-save { width: calc(100% - 32px); }
+#pin-comments { text-align: left; max-width: 640px; margin: 0 auto; }
+#pin-comments h3 { margin: 8px 0 12px; }
+.comment-item { background: rgba(255,255,255,0.6); border: 1px solid rgba(255,255,255,0.7); border-radius: 14px; padding: 10px 14px; margin: 0 0 10px; text-align: left; }
+.comment-item p { margin: 4px 0 0; }
+.comment-item .muted { font-size: 12px; }
+.comment-item button { padding: 4px 10px; font-size: 12px; margin-top: 6px; }
 
 .profile-bar { display: flex; align-items: center; gap: 10px; justify-content: center; flex-wrap: wrap; margin: 0 auto 16px; }
 .avatar { width: 44px; height: 44px; border-radius: 50%; background: #c2410c; color: white; display: inline-flex; align-items: center; justify-content: center; font-weight: 800; font-size: 20px; flex-shrink: 0; }

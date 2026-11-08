@@ -74,6 +74,40 @@
     <p id="search-empty" class="empty hidden">No pins match that search yet.</p>
   </div>
 
+  <!-- ============ DISCOVER VIEW (free photos, no Pinterest, no Pexels) ============ -->
+  <div id="discover-view" class="view">
+    <h2>Discover</h2>
+    <p class="muted">Free photos you can save as pins. Openverse needs no key and works straight away. Photos go online to your feed with the photographer's credit on them.</p>
+    <div class="search-row">
+      <input id="discover-search" placeholder="Search free photos, e.g. cozy rooms" />
+      <button id="discover-search-button" type="button">Search</button>
+    </div>
+    <div class="field-row wrap">
+      <label>Source
+        <select id="discover-source">
+          <option value="openverse" selected>Openverse (no key needed)</option>
+          <option value="unsplash">Unsplash (needs your key)</option>
+          <option value="pixabay">Pixabay (needs your key)</option>
+        </select>
+      </label>
+    </div>
+    <div class="chip-row" id="discover-chips">
+      <button type="button" data-topic="rooms" class="chip active">Rooms</button>
+      <button type="button" data-topic="cars" class="chip">Cars</button>
+      <button type="button" data-topic="food" class="chip">Food</button>
+      <button type="button" data-topic="travel" class="chip">Travel</button>
+      <button type="button" data-topic="fashion" class="chip">Fashion</button>
+      <button type="button" data-topic="nature" class="chip">Nature</button>
+    </div>
+    <div class="field-row wrap">
+      <button id="discover-fill-btn" type="button">✨ Fill my feed — 10 fresh pins</button>
+    </div>
+    <p id="discover-note" class="muted">Source: Openverse — free photos, no key needed.</p>
+    <main id="discover-grid"></main>
+    <p id="discover-empty" class="empty hidden">No photos found yet — try another word.</p>
+    <p id="discover-error" class="error hidden"></p>
+  </div>
+
   <!-- ============ SAVED VIEW (Instagram-style tab) ============ -->
   <div id="saved-view" class="view">
     <h2>Saved</h2>
@@ -277,12 +311,24 @@
       <button id="pin-edit-save" type="button">Save changes</button>
     </div>
     <div class="field-row wrap">
+      <button id="pin-like" type="button" class="secondary-btn">🤍 Like</button>
+      <button id="pin-download" type="button" class="secondary-btn">⬇️ Download</button>
+      <button id="pin-pinterest" type="button" class="secondary-btn">📌 Pinterest</button>
       <button id="pin-open-link" type="button" class="secondary-btn">Open link</button>
       <button id="pin-edit" type="button" class="secondary-btn">Edit</button>
       <button id="pin-change-board" type="button" class="secondary-btn">Change board</button>
       <button id="pin-share" type="button" class="secondary-btn">Share</button>
       <button id="pin-save-toggle" type="button" class="secondary-btn">Save</button>
       <button id="pin-delete" type="button" class="danger-btn">Delete</button>
+    </div>
+    <div id="pin-comments">
+      <h3>Comments</h3>
+      <div id="pin-comments-list"></div>
+      <p id="pin-comments-note" class="muted hidden"></p>
+      <div class="search-row">
+        <input id="pin-comment-input" placeholder="Add a comment…" />
+        <button id="pin-comment-add" type="button">Post</button>
+      </div>
     </div>
   </div>
 
@@ -334,6 +380,7 @@
   <nav id="bottom-nav">
     <button type="button" data-view="feed-view" class="active">🏠<br>Home</button>
     <button type="button" data-view="search-view">🔍<br>Search</button>
+    <button type="button" data-view="discover-view">✨<br>Discover</button>
     <button type="button" id="nav-create" aria-label="Create">+</button>
     <button type="button" data-view="saved-view">💾<br>Saved</button>
     <button type="button" data-view="profile-view">👤<br>Profile</button>

@@ -96,3 +96,46 @@ insert into public.pins (id, user_id, author_name, title, description, link, cat
 on conflict (id) do nothing;
 
 select 'boards', count(*) from public.boards union all select 'pins', count(*) from public.pins;
+
+-- ============ NEW (Nov 2026): likes + comments ============
+-- If you already ran this file before, run just this section in
+-- Supabase Dashboard > SQL Editor. Safe to run again (IF NOT EXISTS).
+
+-- Likes: one row per person per pin. The unique rule stops double-likes.
+create table if not exists public.likes (
+  id uuid primary key default gen_random_uuid(),
+  pin_id uuid not null references public.pins(id) on delete cascade,
+  user_id uuid not null,
+  created_at timestamptz not null default now(),
+  unique (pin_id, user_id)
+);
+
+-- Comments: one row per comment. author_name is saved at posting time so
+-- a comment still shows a name even if the account is later renamed.
+create table if not exists public.comments (
+  id uuid primary key default gen_random_uuid(),
+  pin_id uuid not null references public.pins(id) on delete cascade,
+  user_id uuid not null,
+  author_name text not null default 'PinBoard',
+  body text not null,
+  created_at timestamptz not null default now()
+);
+
+alter table public.likes enable row level security;
+alter table public.comments enable row level security;
+
+-- Likes: everyone can read counts; only the liker can add/remove their own like.
+drop policy if exists "likes public read" on public.likes;
+create policy "likes public read" on public.likes for select using (true);
+drop policy if exists "likes insert own" on public.likes;
+create policy "likes insert own" on public.likes for insert with check (auth.uid() = user_id);
+drop policy if exists "likes delete own" on public.likes;
+create policy "likes delete own" on public.likes for delete using (auth.uid() = user_id);
+
+-- Comments: everyone can read; only the author can post/delete their own comment.
+drop policy if exists "comments public read" on public.comments;
+create policy "comments public read" on public.comments for select using (true);
+drop policy if exists "comments insert own" on public.comments;
+create policy "comments insert own" on public.comments for insert with check (auth.uid() = user_id);
+drop policy if exists "comments delete own" on public.comments;
+create policy "comments delete own" on public.comments for delete using (auth.uid() = user_id);
